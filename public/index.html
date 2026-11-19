@@ -1,10 +1,10 @@
 <!doctype html>
 <!--
-  Lakeview Fellowship Church — self-hosted on Cloudflare Pages.
-  Synthesized from the syndication-engine template. EDIT markers below = values
-  awaiting real Lakeview assets (logo, hero photo, YouTube channel, Facebook page).
+  Lakeview Fellowship Church — self-hosted on GitHub Pages (now) / Cloudflare Pages (long term).
+  Rebuilt to match the existing FinalWeb site exactly: header + hero + two photo cards +
+  Listen-Now sermon banner. Nothing else. Real assets sourced from the original site's CDN.
 -->
-<html lang="en" data-lang="en">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,343 +13,88 @@
   <meta property="og:title" content="Lakeview Fellowship Church">
   <meta property="og:description" content="Taking strangers, making family.">
   <link rel="icon" href="images/logo.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css?v=2026-11-19">
-  <script>
-    try {
-      var l = localStorage.getItem('lang');
-      if (l === 'es' || l === 'en') { document.documentElement.dataset.lang = l; document.documentElement.lang = l; }
-    } catch (e) {}
-  </script>
 </head>
 <body>
-  <!-- ===== "Live now" bar ===== -->
-  <a class="live-bar" id="live-bar" href="#live" hidden>
-    <span class="live-dot" aria-hidden="true"></span>
-    <span class="en">We're live now! Watch the service</span><span class="es">¡Estamos en vivo! Vea el servicio</span>
-    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-  </a>
 
-  <!-- ===== Header ===== -->
+  <!-- ===== Header / nav (matches existing site) ===== -->
   <header class="site-header">
-    <div class="nav-wrap">
-      <a class="brand" href="#top" aria-label="Lakeview Fellowship Church home">
-        <img src="images/logo.png" alt="Lakeview Fellowship Church" width="460" height="434">
-      </a>
-      <nav id="site-nav" class="site-nav" aria-label="Main navigation">
-        <a href="#live" class="nav-live"><span class="live-dot" aria-hidden="true"></span><span class="en">Watch Live</span><span class="es">En vivo</span></a>
-        <a href="#welcome"><span class="en">About</span><span class="es">Nosotros</span></a>
-        <a href="#visit"><span class="en">Visit</span><span class="es">Visítenos</span></a>
-        <a href="#ministries"><span class="en">Ministries</span><span class="es">Ministerios</span></a>
-        <a href="#events"><span class="en">Events</span><span class="es">Eventos</span></a>
-        <a href="#giving"><span class="en">Giving</span><span class="es">Ofrendas</span></a>
-        <a href="#connect"><span class="en">Connect</span><span class="es">Contacto</span></a>
-      </nav>
-      <div class="nav-actions">
-        <div class="language-switch" role="group" aria-label="Select language / Seleccionar idioma">
-          <button type="button" data-set-lang="en">EN</button>
-          <span aria-hidden="true">/</span>
-          <button type="button" data-set-lang="es">ES</button>
+    <a class="brand" href="#top" aria-label="Lakeview Fellowship Church home">
+      <img src="images/logo.png" alt="Lakeview Fellowship Church">
+    </a>
+    <nav class="site-nav" aria-label="Main navigation">
+      <div class="nav-item has-menu">
+        <a href="#about">About Us <span class="caret">▾</span></a>
+        <div class="submenu">
+          <a href="#about">What We Believe</a>
+          <a href="#about">Staff</a>
         </div>
-        <a class="nav-cta" href="#visit">
-          <span class="en">Plan Your Visit</span><span class="es">Planee su visita</span>
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-        </a>
-        <button class="nav-toggle" aria-label="Menu" aria-expanded="false" aria-controls="site-nav">
-          <span></span><span></span><span></span>
-        </button>
       </div>
-    </div>
+      <a class="nav-item" href="#sermon">Sermons</a>
+      <div class="nav-item has-menu">
+        <a href="#about">Connect <span class="caret">▾</span></a>
+        <div class="submenu">
+          <a href="#about">Community</a>
+          <a href="#about">Newsletters</a>
+        </div>
+      </div>
+      <a class="nav-item" href="#about">Contact</a>
+      <a class="nav-item" href="#about">Events</a>
+      <a class="nav-item" href="https://lakeviewfellowshipchurch.com/give">Giving</a>
+    </nav>
   </header>
 
   <main>
-    <!-- ===== Hero ===== -->
+    <!-- ===== 1. Hero ===== -->
     <section class="hero" id="top">
-      <div class="hero-content">
-        <p class="eyebrow light"><span class="rule"></span>Reformed Baptist Church · Hudson, FL</p>
-        <h1>
-          <span class="en">Taking strangers.<br>Making <em>family.</em></span>
-          <span class="es">Recibiendo extraños.<br>Haciendo <em>familia.</em></span>
-        </h1>
-        <p class="hero-copy">
-          <span class="en">Taking strangers and making family in Christ—through Christ-centered worship, God's word, and serving together on mission.</span>
-          <span class="es">Recibiendo extraños y haciéndolos familia en Cristo—mediante la adoración centrada en Cristo, la palabra de Dios y el servicio en misión.</span>
-        </p>
-        <div class="hero-actions">
-          <a class="button primary" href="#visit">
-            <span class="en">Join Us Sunday</span><span class="es">Acompáñenos el domingo</span>
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </a>
-          <a class="button ghost" href="#welcome"><span class="en">Get to Know Us</span><span class="es">Conózcanos</span></a>
-        </div>
-      </div>
-
-      <div class="service-card">
-        <div>
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6h4"/></svg>
-          <span><small><span class="en">Sunday Worship</span><span class="es">Culto dominical</span></small><strong>11:00 AM</strong></span>
-        </div>
-        <div>
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>
-          <span><small><span class="en">Wednesday Bible Study</span><span class="es">Estudio bíblico (miércoles)</span></small><strong>7:00 PM</strong></span>
-        </div>
-        <div>
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-5.5 10.2-7.4 11.8a1 1 0 0 1-1.2 0C9.5 20.2 4 15 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
-          <span><small><span class="en">Hudson, Florida</span><span class="es">Hudson, Florida</span></small><strong>9208 Bolton Ave</strong></span>
-        </div>
-        <a href="https://www.google.com/maps/search/?api=1&amp;query=9208+Bolton+Ave+Hudson+FL+34667" target="_blank" rel="noopener">
-          <span class="en">Get Directions</span><span class="es">Cómo llegar</span>
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-        </a>
+      <div class="hero-inner">
+        <h1>Taking Strangers, Making Family</h1>
+        <p class="hero-sub">Welcome to our church</p>
+        <a class="btn blue" href="https://www.google.com/maps/search/?api=1&amp;query=9208+Bolton+Ave+Hudson+FL+34667" target="_blank" rel="noopener">Get Directions</a>
       </div>
     </section>
 
-    <!-- ===== Watch live ===== -->
-    <!-- Watch live: YOUTUBE_CHANNEL_ID (UCWMPfjgxhLvh7e8fpsjBPpw) and FACEBOOK_URL set in js/main.js -->
-    <section class="live" id="live" data-live="false">
-      <div class="live-offline">
-        <div class="live-offline-text">
-          <span class="live-badge" aria-hidden="true">
-            <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4Z"/></svg>
-          </span>
-          <div>
-            <p class="kicker gold"><span class="en">Can't make it in person?</span><span class="es">¿No puede venir en persona?</span></p>
-            <h2><span class="en">Watch us live Sundays at 11:00 AM</span><span class="es">Véanos en vivo los domingos a las 11:00 AM</span></h2>
-          </div>
-        </div>
-        <div class="live-links">
-          <a class="button youtube" href="https://www.youtube.com/@lakeviewfellowshipchurch1104" target="_blank" rel="noopener">
-            <span class="en">YouTube</span><span class="es">YouTube</span>
-          </a>
-          <a class="button outline" href="https://www.facebook.com/LakeviewFellowshipChurch/" target="_blank" rel="noopener">
-            <span class="en">Facebook</span><span class="es">Facebook</span>
-          </a>
+    <!-- ===== 2. Two photo cards: Events | Giving ===== -->
+    <section class="cards">
+      <div class="card">
+        <img src="images/events.jpg" alt="Joining together at a church gathering">
+        <div class="card-body">
+          <p class="card-title">Join us at any one of our many events.</p>
+          <a class="btn blue" href="#about">See Calendar</a>
         </div>
       </div>
-
-      <div class="live-on" hidden>
-        <div class="live-head">
-          <span class="live-pill"><span class="live-dot" aria-hidden="true"></span>LIVE</span>
-          <h2><span class="en">We're live now</span><span class="es">Estamos en vivo</span></h2>
+      <div class="card">
+        <img src="images/giving.jpg" alt="Giving back together">
+        <div class="card-body">
+          <p class="card-title">Because we've been given so much, we love giving back.</p>
+          <a class="btn blue" href="https://lakeviewfellowshipchurch.com/give">Donate Today</a>
         </div>
-        <div class="live-player" id="live-player"></div>
-        <p class="live-alt">
-          <span class="en">Trouble watching here? Watch on</span><span class="es">¿Problemas para verlo aquí? Véalo en</span>
-          <a href="https://www.youtube.com/@lakeviewfellowshipchurch1104/live" target="_blank" rel="noopener">YouTube</a> ·
-          <a href="https://www.facebook.com/LakeviewFellowshipChurch/" target="_blank" rel="noopener">Facebook</a>
-        </p>
       </div>
     </section>
 
-    <!-- ===== Welcome ===== -->
-    <section class="welcome section" id="welcome">
+    <!-- ===== 3. Sermon banner ===== -->
+    <section class="sermon-banner" id="sermon">
       <div>
-        <p class="kicker"><span class="en">Welcome</span><span class="es">Bienvenidos</span></p>
-        <h2><span class="en">There is a place<br>for you here.</span><span class="es">Aquí hay un lugar<br>para usted.</span></h2>
-      </div>
-      <div class="welcome-copy">
-        <p class="lead">
-          <span class="en">Taking strangers and making family in Christ—through Christ-centered worship, God's word, and serving together on mission.</span>
-          <span class="es">Recibiendo extraños y haciéndolos familia en Cristo—mediante la adoración centrada en Cristo, la palabra de Dios y el servicio en misión.</span>
-        </p>
-        <p>
-          <span class="en">Whether church has always been part of your life or you are exploring faith for the first time, you are welcome at Lakeview Fellowship Church.</span>
-          <span class="es">Ya sea que la iglesia siempre haya sido parte de su vida o que esté explorando la fe por primera vez, es bienvenido en la Iglesia Lakeview Fellowship.</span>
-        </p>
-      </div>
-    </section>
-
-    <!-- ===== Values band ===== -->
-    <section class="values-band">
-      <article>
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 8 6 6M4 14l6-6 2-3M2 5h12M7 2h1M22 22l-5-10-5 10M14 18h6"/></svg>
-        <div>
-          <strong><span class="en">Christ-Centered Worship</span><span class="es">Adoración centrada en Cristo</span></strong>
-          <span><span class="en">Our worship points to Christ and His word.</span><span class="es">Nuestra adoración apunta a Cristo y a Su palabra.</span></span>
-        </div>
-      </article>
-      <article>
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3.1a4 4 0 0 1 0 7.8M22 21v-2a4 4 0 0 0-3-3.9"/><circle cx="9" cy="7" r="4"/></svg>
-        <div>
-          <strong><span class="en">Authentic Community</span><span class="es">Comunidad auténtica</span></strong>
-          <span><span class="en">Making family in Christ means belonging and growing together.</span><span class="es">Hacer familia en Cristo significa pertenecer y crecer juntos.</span></span>
-        </div>
-      </article>
-      <article>
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/></svg>
-        <div>
-          <strong><span class="en">Serving on Mission</span><span class="es">Sirviendo en misión</span></strong>
-          <span><span class="en">Serving together as family in the name of Jesus.</span><span class="es">Sirviendo juntos como familia en el nombre de Jesús.</span></span>
-        </div>
-      </article>
-    </section>
-
-    <!-- ===== Visit ===== -->
-    <section class="visit" id="visit">
-      <div class="visit-panel">
-        <p class="kicker light"><span class="en">Your First Sunday</span><span class="es">Su primer domingo</span></p>
-        <h2><span class="en">Come as you are.</span><span class="es">Venga tal como es.</span></h2>
-        <p>
-          <span class="en">Expect a warm welcome, heartfelt worship, prayer, and a Bible-centered message. Families and visitors are always welcome. Join us Sunday at 11 AM—potluck to follow.</span>
-          <span class="es">Espere una cálida bienvenida, adoración de corazón, oración y un mensaje centrado en la Biblia. Las familias y los visitantes siempre son bienvenidos. Acompáñenos el domingo a las 11 AM—compartir de comida después.</span>
-        </p>
-        <div class="visit-details">
-          <div>
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6h4"/></svg>
-            <span><small><span class="en">Worship</span><span class="es">Culto</span></small><strong><span class="en">Sundays at 11:00 AM</span><span class="es">Domingos a las 11:00 AM</span></strong></span>
-          </div>
-          <div>
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>
-            <span><small><span class="en">Bible Study</span><span class="es">Estudio bíblico</span></small><strong><span class="en">Wednesdays at 7:00 PM</span><span class="es">Miércoles a las 7:00 PM</span></strong></span>
-          </div>
-          <div>
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-5.5 10.2-7.4 11.8a1 1 0 0 1-1.2 0C9.5 20.2 4 15 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
-            <span><small><span class="en">Location</span><span class="es">Ubicación</span></small><strong>9208 Bolton Ave, Hudson, FL 34667</strong></span>
-          </div>
-        </div>
-        <a class="button cream" href="https://www.google.com/maps/search/?api=1&amp;query=9208+Bolton+Ave+Hudson+FL+34667" target="_blank" rel="noopener">
-          <span class="en">Open in Maps</span><span class="es">Abrir en Maps</span>
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-        </a>
-      </div>
-      <aside class="visit-note">
-        <span class="quote-mark" aria-hidden="true">“</span>
-        <p>
-          <span class="en">For where two or three gather in my name, there am I with them.</span>
-          <span class="es">Porque donde están dos o tres congregados en mi nombre, allí estoy yo en medio de ellos.</span>
-        </p>
-        <small><span class="en">Matthew 18:20</span><span class="es">Mateo 18:20</span></small>
-      </aside>
-    </section>
-
-    <!-- ===== Ministries ===== -->
-    <section class="ministries section" id="ministries">
-      <div class="section-head">
-        <div>
-          <p class="kicker"><span class="en">Life Together</span><span class="es">Vida en comunidad</span></p>
-          <h2><span class="en">Faith in action.</span><span class="es">Fe en acción.</span></h2>
-        </div>
-        <p>
-          <span class="en">There is more to church than Sunday. Find ways to learn, build friendships, and serve our neighbors throughout our city.</span>
-          <span class="es">La iglesia es más que el domingo. Encuentre maneras de aprender, formar amistades y servir a nuestros vecinos en toda nuestra ciudad.</span>
-        </p>
-      </div>
-      <div class="ministry-grid">
-        <article>
-          <span class="num">01</span>
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/></svg>
-          <h3><span class="en">Community Outreach</span><span class="es">Alcance comunitario</span></h3>
-          <p><span class="en">Meeting real needs with compassion and serving our city in the name of Jesus.</span><span class="es">Atendemos necesidades reales con compasión y servimos a nuestra ciudad en el nombre de Jesús.</span></p>
-        </article>
-        <article>
-          <span class="num">02</span>
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3.1a4 4 0 0 1 0 7.8M22 21v-2a4 4 0 0 0-3-3.9"/><circle cx="9" cy="7" r="4"/></svg>
-          <h3><span class="en">Family &amp; Fellowship</span><span class="es">Familia y compañerismo</span></h3>
-          <p><span class="en">Growing closer through shared meals, encouragement, and meaningful relationships—potluck to follow each Sunday.</span><span class="es">Crecemos juntos con comidas compartidas, ánimo mutuo y relaciones significativas—compartir de comida después cada domingo.</span></p>
-        </article>
-        <article>
-          <span class="num">03</span>
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
-          <h3><span class="en">Bible &amp; Prayer</span><span class="es">Biblia y oración</span></h3>
-          <p><span class="en">Learning from Scripture and praying together as we grow in everyday faith.</span><span class="es">Aprendemos de las Escrituras y oramos juntos mientras crecemos en la fe cada día.</span></p>
-        </article>
-      </div>
-    </section>
-
-    <!-- ===== Events calendar ===== -->
-    <section class="calendar-section section" id="events">
-      <div class="section-head">
-        <div>
-          <p class="kicker"><span class="en">Events</span><span class="es">Eventos</span></p>
-          <h2><span class="en">Walk through the year with us.</span><span class="es">Recorra el año con nosotros.</span></h2>
-        </div>
-        <p>
-          <span class="en">Explore upcoming church gatherings and holidays. Use the arrows to move through the calendar.</span>
-          <span class="es">Vea las próximas reuniones de la iglesia y días festivos. Use las flechas para recorrer el calendario.</span>
-        </p>
-      </div>
-      <div class="calendar-toolbar">
-        <div class="month-controls">
-          <button type="button" class="cal-prev" aria-label="Previous month">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
-          </button>
-          <strong class="cal-title"></strong>
-          <button type="button" class="cal-next" aria-label="Next month">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
-          </button>
-        </div>
-      </div>
-      <div class="calendar-layout">
-        <article class="month-card">
-          <div class="weekday-row"></div>
-          <div class="calendar-grid"></div>
-        </article>
-        <aside class="event-list">
-          <p class="event-list-label"><span class="en">This Month</span><span class="es">Este mes</span></p>
-          <div class="event-entries"></div>
-          <div class="calendar-key">
-            <span><i class="church"></i> <span class="en">Church event</span><span class="es">Evento de la iglesia</span></span>
-            <span><i class="holiday"></i> <span class="en">Holiday</span><span class="es">Día festivo</span></span>
-          </div>
-        </aside>
-      </div>
-    </section>
-
-    <!-- ===== Giving ===== -->
-    <section class="connect giving-section" id="giving">
-      <div>
-        <p class="kicker gold"><span class="en">Because We've Been Given So Much</span><span class="es">Porque hemos recibido tanto</span></p>
-        <h2><span class="en">We love giving back.</span><span class="es">Nos encanta dar.</span></h2>
-        <p>
-          <span class="en">Your giving supports worship, serving our neighbors, and the mission of making strangers into family in Christ.</span>
-          <span class="es">Su ofrenda apoya la adoración, el servicio a nuestro prójimo y la misión de hacer de extraños una familia en Cristo.</span>
-        </p>
-      </div>
-      <div class="contact-actions">
-        <a class="button cream" href="https://lakeviewfellowshipchurch.com/give" target="_blank" rel="noopener">
-          <span class="en">Give Online</span><span class="es">Ofrendar en línea</span>
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-        </a>
-      </div>
-    </section>
-
-    <!-- ===== Connect ===== -->
-    <section class="connect" id="connect">
-      <div>
-        <p class="kicker gold"><span class="en">We'd Love to Meet You</span><span class="es">Nos encantaría conocerle</span></p>
-        <h2><span class="en">Your seat is waiting.</span><span class="es">Su lugar le espera.</span></h2>
-        <p>
-          <span class="en">Questions about worship, ministries, or visiting with your family? Reach out—we're happy to help.</span>
-          <span class="es">¿Preguntas sobre el culto, los ministerios o cómo visitarnos con su familia? Comuníquese con nosotros—con gusto le ayudamos.</span>
-        </p>
-      </div>
-      <div class="contact-actions">
-        <a class="button cream" href="tel:+17278564100">
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2Z"/></svg>
-          <span class="en">Call the Church</span><span class="es">Llamar a la iglesia</span> · (727) 856-4100
-        </a>
-        <a class="button outline" href="mailto:Lakeviewfellowshipchurchfl@gmail.com">
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 6l-10 7L2 6"/><rect x="2" y="4" width="20" height="16" rx="2"/></svg>
-          <span class="en">Email Us</span><span class="es">Escríbanos</span>
-        </a>
-        <a class="button youtube" href="https://www.facebook.com/LakeviewFellowshipChurch/" target="_blank" rel="noopener">
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          <span class="en">Find us on Facebook</span><span class="es">Síganos en Facebook</span>
-        </a>
+        <h2>Listen to the latest sermon.</h2>
+        <p>Each week we sit under the word of God together.</p>
+        <a class="btn blue" href="https://www.youtube.com/@lakeviewfellowshipchurch1104">Listen Now</a>
       </div>
     </section>
   </main>
 
-  <!-- ===== Footer ===== -->
+  <!-- ===== Footer (matches existing site) ===== -->
   <footer class="site-footer">
-    <img src="images/logo.png" alt="" width="460" height="434">
-    <p>9208 Bolton Ave, Hudson, FL 34667 · <a href="mailto:Lakeviewfellowshipchurchfl@gmail.com">Lakeviewfellowshipchurchfl@gmail.com</a></p>
-    <p>© <span id="year"></span> Lakeview Fellowship Church · <a class="member-login" href="/login"><span class="en">Member login</span><span class="es">Acceso para miembros</span></a></p>
+    <p class="footer-email"><a href="mailto:Lakeviewfellowshipchurchfl@gmail.com">✉ Lakeviewfellowshipchurchfl@gmail.com</a></p>
+    <p class="footer-phone"><a href="tel:+17278564100">✆ 7278564100</a></p>
+    <div class="social" aria-label="Social media">
+      <a href="https://www.facebook.com/LakeviewFellowshipChurch/" aria-label="Facebook" target="_blank" rel="noopener">f</a>
+      <a href="https://www.youtube.com/@lakeviewfellowshipchurch1104" aria-label="YouTube" target="_blank" rel="noopener">▶</a>
+    </div>
+    <p class="footer-address">9208 Bolton Ave, Hudson, Fl 34667</p>
+    <p class="footer-admin"><a href="/login">Admin Login</a></p>
+    <p class="footer-copy">© <span id="year"></span> Lakeview Fellowship Church</p>
   </footer>
 
-  <script src="js/events.js?v=2026-11-19"></script>
-  <script src="js/main.js?v=2026-11-19"></script>
+  <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
 </body>
 </html>
