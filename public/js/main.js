@@ -6,7 +6,7 @@
 const FIREBASE_PROJECT_ID = '';
 const FIREBASE_API_KEY = '';
 const YOUTUBE_CHANNEL_ID = 'YOUTUBE_CHANNEL_ID_PLACEHOLDER';
-const FACEBOOK_URL = 'https://www.facebook.com/YourChurchPage';
+const FACEBOOK_URL = 'https://www.facebook.com/LakeviewFellowshipChurch/';
 // NOTE: with FIREBASE_PROJECT_ID empty, the Firestore calls fail fast and the page shows
 // only the fixed events in js/events.js and the offline live schedule. This keeps the
 // public site fully static (no Firebase) until the Workers/D1 API replaces it.
