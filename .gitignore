@@ -1,0 +1,16 @@
+# Node / build
+node_modules/
+dist/
+build/
+
+# Cloudflare / wrangler
+.wrangler/
+.dev.vars
+
+# Local env & secrets
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store

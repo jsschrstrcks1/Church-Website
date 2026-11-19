@@ -1,0 +1,28 @@
+name: Deploy to Cloudflare Pages
+
+# Self-host deploy: pushing to `main` in this repo builds the static `public/`
+# site and uploads it to Cloudflare Pages (free tier, no subscription). The
+# production domain (lakeviewfellowshipchurch.com) is bound to this project
+# after the first deploy; the GoDaddy nameservers move over only once the new
+# site is confirmed live (see README "Cutover").
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy public site to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy public --project-name=lakeview-fellowship-church --branch=main --commit-dirty=true
