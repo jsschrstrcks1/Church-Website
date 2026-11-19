@@ -1,0 +1,349 @@
+<!doctype html>
+<!--
+  EDIT: This is a template. Before publishing, replace the placeholders in this file:
+    - "Your Church Name" / "Your Church" / "Su Iglesia" (title, description, logo alt text, copy, footer)
+    - "Your City" and the address "123 Main St, Your City, ST 00000" (hero card, Visit section, footer, Google Maps links)
+    - Service times (Sunday 10:00 AM, Wednesday 7:00 PM) in the hero card, Watch Live and Visit sections
+    - Phone "(555) 555-0100" / tel:+15555550100 and "Pastor Name" (Connect section)
+    - Facebook (https://www.facebook.com/YourChurchPage) and YouTube (https://www.youtube.com/@yourchurch) links
+    - Images: images/logo.png and images/hero-church.jpg
+  Also edit the constants at the top of js/main.js (Firebase project, API key, YouTube channel, Facebook URL).
+-->
+<html lang="en" data-lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your Church Name | Your City</title>
+  <meta name="description" content="One family. Two languages. One faith. Join Your Church Name in Your City for worship, fellowship, and service.">
+  <meta property="og:title" content="Your Church Name">
+  <meta property="og:description" content="One family. Two languages. One faith.">
+  <link rel="icon" href="images/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css?v=2026-11-15">
+  <script>
+    // Apply the saved language before the page paints to avoid a flash.
+    try {
+      var l = localStorage.getItem('lang');
+      if (l === 'es' || l === 'en') { document.documentElement.dataset.lang = l; document.documentElement.lang = l; }
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <!--
+    Bilingual content: each piece of text has an English and a Spanish version.
+      <span class="en">English</span><span class="es">Español</span>
+    CSS shows only the language selected with the EN / ES switch.
+  -->
+
+  <!-- ===== "Live now" bar: shown by js/main.js only while the church is streaming ===== -->
+  <a class="live-bar" id="live-bar" href="#live" hidden>
+    <span class="live-dot" aria-hidden="true"></span>
+    <span class="en">We're live now! Watch the service</span><span class="es">¡Estamos en vivo! Vea el servicio</span>
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+  </a>
+
+  <!-- ===== Header ===== -->
+  <header class="site-header">
+    <div class="nav-wrap">
+      <a class="brand" href="#top" aria-label="Your Church home">
+        <img src="images/logo.png" alt="Your Church Name" width="460" height="434">
+      </a>
+      <nav id="site-nav" class="site-nav" aria-label="Main navigation">
+        <a href="#live" class="nav-live"><span class="live-dot" aria-hidden="true"></span><span class="en">Watch Live</span><span class="es">En vivo</span></a>
+        <a href="#welcome"><span class="en">About</span><span class="es">Nosotros</span></a>
+        <a href="#visit"><span class="en">Visit</span><span class="es">Visítenos</span></a>
+        <a href="#ministries"><span class="en">Ministries</span><span class="es">Ministerios</span></a>
+        <a href="#events"><span class="en">Events</span><span class="es">Eventos</span></a>
+        <a href="#connect"><span class="en">Connect</span><span class="es">Contacto</span></a>
+      </nav>
+      <div class="nav-actions">
+        <div class="language-switch" role="group" aria-label="Select language / Seleccionar idioma">
+          <button type="button" data-set-lang="en">EN</button>
+          <span aria-hidden="true">/</span>
+          <button type="button" data-set-lang="es">ES</button>
+        </div>
+        <a class="nav-cta" href="#visit">
+          <span class="en">Plan Your Visit</span><span class="es">Planee su visita</span>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+        <button class="nav-toggle" aria-label="Menu" aria-expanded="false" aria-controls="site-nav">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ===== Hero ===== -->
+    <section class="hero" id="top">
+      <div class="hero-content">
+        <p class="eyebrow light"><span class="rule"></span>English + Español</p>
+        <h1>
+          <span class="en">One family.<br>Two languages.<br><em>One faith.</em></span>
+          <span class="es">Una familia.<br>Dos idiomas.<br><em>Una fe.</em></span>
+        </h1>
+        <p class="hero-copy">
+          <span class="en">A place to belong, grow, and serve—where English- and Spanish-speaking families worship God together.</span>
+          <span class="es">Un lugar para pertenecer, crecer y servir—donde familias de habla inglesa y española adoran a Dios juntas.</span>
+        </p>
+        <div class="hero-actions">
+          <a class="button primary" href="#visit">
+            <span class="en">Join Us Sunday</span><span class="es">Acompáñenos el domingo</span>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+          <a class="button ghost" href="#welcome"><span class="en">Get to Know Us</span><span class="es">Conózcanos</span></a>
+        </div>
+      </div>
+
+      <div class="service-card">
+        <div>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6h4"/></svg>
+          <span><small><span class="en">Sunday Worship</span><span class="es">Culto dominical</span></small><strong>10:00 AM</strong></span>
+        </div>
+        <div>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>
+          <span><small><span class="en">Wednesday Bible Study</span><span class="es">Estudio bíblico (miércoles)</span></small><strong>7:00 PM</strong></span>
+        </div>
+        <div>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-5.5 10.2-7.4 11.8a1 1 0 0 1-1.2 0C9.5 20.2 4 15 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
+          <span><small><span class="en">Your City</span><span class="es">Su ciudad</span></small><strong>123 Main St</strong></span>
+        </div>
+        <a href="https://www.google.com/maps/search/?api=1&amp;query=123+Main+St+Your+City+ST+00000" target="_blank" rel="noopener">
+          <span class="en">Get Directions</span><span class="es">Cómo llegar</span>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+    </section>
+
+    <!-- ===== Watch live =====
+         js/main.js checks every minute whether the church is streaming (Live Studio sets the
+         public flag publicLive/status). Live: the YouTube player. Otherwise: the schedule. -->
+    <section class="live" id="live" data-live="false">
+      <div class="live-offline">
+        <div class="live-offline-text">
+          <span class="live-badge" aria-hidden="true">
+            <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4Z"/></svg>
+          </span>
+          <div>
+            <p class="kicker gold"><span class="en">Can't make it in person?</span><span class="es">¿No puede venir en persona?</span></p>
+            <h2><span class="en">Watch us live Sundays at 10:00 AM</span><span class="es">Véanos en vivo los domingos a las 10:00 AM</span></h2>
+          </div>
+        </div>
+        <div class="live-links">
+          <a class="button youtube" href="https://www.youtube.com/@yourchurch" target="_blank" rel="noopener">
+            <span class="en">YouTube</span><span class="es">YouTube</span>
+          </a>
+          <a class="button outline" href="https://www.facebook.com/YourChurchPage" target="_blank" rel="noopener">
+            <span class="en">Facebook</span><span class="es">Facebook</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="live-on" hidden>
+        <div class="live-head">
+          <span class="live-pill"><span class="live-dot" aria-hidden="true"></span>LIVE</span>
+          <h2><span class="en">We're live now</span><span class="es">Estamos en vivo</span></h2>
+        </div>
+        <div class="live-player" id="live-player"></div>
+        <p class="live-alt">
+          <span class="en">Trouble watching here? Watch on</span><span class="es">¿Problemas para verlo aquí? Véalo en</span>
+          <a href="https://www.youtube.com/@yourchurch/live" target="_blank" rel="noopener">YouTube</a> ·
+          <a href="https://www.facebook.com/YourChurchPage" target="_blank" rel="noopener">Facebook</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- ===== Welcome ===== -->
+    <section class="welcome section" id="welcome">
+      <div>
+        <p class="kicker"><span class="en">Welcome</span><span class="es">Bienvenidos</span></p>
+        <h2><span class="en">There is a place<br>for you here.</span><span class="es">Aquí hay un lugar<br>para usted.</span></h2>
+      </div>
+      <div class="welcome-copy">
+        <p class="lead">
+          <span class="en">We are a community of people who speak English and Spanish. We gather to worship God and serve Him by serving others.</span>
+          <span class="es">Somos una comunidad de personas que hablan inglés y español. Nos reunimos para adorar a Dios y servirle sirviendo a los demás.</span>
+        </p>
+        <p>
+          <span class="en">Whether church has always been part of your life or you are exploring faith for the first time, you are welcome at Your Church.</span>
+          <span class="es">Ya sea que la iglesia siempre haya sido parte de su vida o que esté explorando la fe por primera vez, es bienvenido en Su Iglesia.</span>
+        </p>
+      </div>
+    </section>
+
+    <!-- ===== Values band ===== -->
+    <section class="values-band">
+      <article>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 8 6 6M4 14l6-6 2-3M2 5h12M7 2h1M22 22l-5-10-5 10M14 18h6"/></svg>
+        <div>
+          <strong><span class="en">Bilingual Worship</span><span class="es">Culto bilingüe</span></strong>
+          <span><span class="en">We worship together in English and Spanish.</span><span class="es">Adoramos juntos en inglés y español.</span></span>
+        </div>
+      </article>
+      <article>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3.1a4 4 0 0 1 0 7.8M22 21v-2a4 4 0 0 0-3-3.9"/><circle cx="9" cy="7" r="4"/></svg>
+        <div>
+          <strong><span class="en">Authentic Community</span><span class="es">Comunidad auténtica</span></strong>
+          <span><span class="en">A church family where you can belong and grow.</span><span class="es">Una familia de fe donde puede pertenecer y crecer.</span></span>
+        </div>
+      </article>
+      <article>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/></svg>
+        <div>
+          <strong><span class="en">Serving Our City</span><span class="es">Sirviendo a nuestra ciudad</span></strong>
+          <span><span class="en">Sharing Christ’s love throughout our city.</span><span class="es">Compartiendo el amor de Cristo en toda nuestra ciudad.</span></span>
+        </div>
+      </article>
+    </section>
+
+    <!-- ===== Visit ===== -->
+    <section class="visit" id="visit">
+      <div class="visit-panel">
+        <p class="kicker light"><span class="en">Your First Sunday</span><span class="es">Su primer domingo</span></p>
+        <h2><span class="en">Come as you are.</span><span class="es">Venga tal como es.</span></h2>
+        <p>
+          <span class="en">Expect a warm welcome, heartfelt bilingual worship, prayer, and a Bible-centered message. Families and visitors are always welcome.</span>
+          <span class="es">Espere una cálida bienvenida, adoración bilingüe de corazón, oración y un mensaje centrado en la Biblia. Las familias y los visitantes siempre son bienvenidos.</span>
+        </p>
+        <div class="visit-details">
+          <div>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6h4"/></svg>
+            <span><small><span class="en">Worship</span><span class="es">Culto</span></small><strong><span class="en">Sundays at 10:00 AM</span><span class="es">Domingos a las 10:00 AM</span></strong></span>
+          </div>
+          <div>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>
+            <span><small><span class="en">Bible Study</span><span class="es">Estudio bíblico</span></small><strong><span class="en">Wednesdays at 7:00 PM</span><span class="es">Miércoles a las 7:00 PM</span></strong></span>
+          </div>
+          <div>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-5.5 10.2-7.4 11.8a1 1 0 0 1-1.2 0C9.5 20.2 4 15 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
+            <span><small><span class="en">Location</span><span class="es">Ubicación</span></small><strong>123 Main St, Your City, ST 00000</strong></span>
+          </div>
+        </div>
+        <a class="button cream" href="https://www.google.com/maps/search/?api=1&amp;query=123+Main+St+Your+City+ST+00000" target="_blank" rel="noopener">
+          <span class="en">Open in Maps</span><span class="es">Abrir en Maps</span>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+      <aside class="visit-note">
+        <span class="quote-mark" aria-hidden="true">“</span>
+        <p>
+          <span class="en">For where two or three gather in my name, there am I with them.</span>
+          <span class="es">Porque donde están dos o tres congregados en mi nombre, allí estoy yo en medio de ellos.</span>
+        </p>
+        <small><span class="en">Matthew 18:20</span><span class="es">Mateo 18:20</span></small>
+      </aside>
+    </section>
+
+    <!-- ===== Ministries ===== -->
+    <section class="ministries section" id="ministries">
+      <div class="section-head">
+        <div>
+          <p class="kicker"><span class="en">Life Together</span><span class="es">Vida en comunidad</span></p>
+          <h2><span class="en">Faith in action.</span><span class="es">Fe en acción.</span></h2>
+        </div>
+        <p>
+          <span class="en">There is more to church than Sunday. Find ways to learn, build friendships, and serve our neighbors throughout our city.</span>
+          <span class="es">La iglesia es más que el domingo. Encuentre maneras de aprender, formar amistades y servir a nuestros vecinos en toda nuestra ciudad.</span>
+        </p>
+      </div>
+      <div class="ministry-grid">
+        <article>
+          <span class="num">01</span>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/></svg>
+          <h3><span class="en">Community Outreach</span><span class="es">Alcance comunitario</span></h3>
+          <p><span class="en">Meeting real needs with compassion and serving our city in the name of Jesus.</span><span class="es">Atendemos necesidades reales con compasión y servimos a nuestra ciudad en el nombre de Jesús.</span></p>
+        </article>
+        <article>
+          <span class="num">02</span>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3.1a4 4 0 0 1 0 7.8M22 21v-2a4 4 0 0 0-3-3.9"/><circle cx="9" cy="7" r="4"/></svg>
+          <h3><span class="en">Family &amp; Fellowship</span><span class="es">Familia y compañerismo</span></h3>
+          <p><span class="en">Growing closer through shared meals, encouragement, and meaningful relationships.</span><span class="es">Crecemos juntos con comidas compartidas, ánimo mutuo y relaciones significativas.</span></p>
+        </article>
+        <article>
+          <span class="num">03</span>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+          <h3><span class="en">Bible &amp; Prayer</span><span class="es">Biblia y oración</span></h3>
+          <p><span class="en">Learning from Scripture and praying together as we grow in everyday faith.</span><span class="es">Aprendemos de las Escrituras y oramos juntos mientras crecemos en la fe cada día.</span></p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ===== Events calendar (events are listed in js/events.js) ===== -->
+    <section class="calendar-section section" id="events">
+      <div class="section-head">
+        <div>
+          <p class="kicker"><span class="en">Events</span><span class="es">Eventos</span></p>
+          <h2><span class="en">Walk through the year with us.</span><span class="es">Recorra el año con nosotros.</span></h2>
+        </div>
+        <p>
+          <span class="en">Explore upcoming church gatherings and holidays. Use the arrows to move through the calendar.</span>
+          <span class="es">Vea las próximas reuniones de la iglesia y días festivos. Use las flechas para recorrer el calendario.</span>
+        </p>
+      </div>
+      <div class="calendar-toolbar">
+        <div class="month-controls">
+          <button type="button" class="cal-prev" aria-label="Previous month">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <strong class="cal-title"></strong>
+          <button type="button" class="cal-next" aria-label="Next month">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="calendar-layout">
+        <article class="month-card">
+          <div class="weekday-row"></div>
+          <div class="calendar-grid"></div>
+        </article>
+        <aside class="event-list">
+          <p class="event-list-label"><span class="en">This Month</span><span class="es">Este mes</span></p>
+          <div class="event-entries"></div>
+          <div class="calendar-key">
+            <span><i class="church"></i> <span class="en">Church event</span><span class="es">Evento de la iglesia</span></span>
+            <span><i class="holiday"></i> <span class="en">Holiday</span><span class="es">Día festivo</span></span>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ===== Connect ===== -->
+    <section class="connect" id="connect">
+      <div>
+        <p class="kicker gold"><span class="en">We’d Love to Meet You</span><span class="es">Nos encantaría conocerle</span></p>
+        <h2><span class="en">Your seat is waiting.</span><span class="es">Su lugar le espera.</span></h2>
+        <p>
+          <span class="en">Questions about worship, ministries, or visiting with your family? Reach out—we’re happy to help.</span>
+          <span class="es">¿Preguntas sobre el culto, los ministerios o cómo visitarnos con su familia? Comuníquese con nosotros—con gusto le ayudamos.</span>
+        </p>
+      </div>
+      <div class="contact-actions">
+        <a class="button cream" href="tel:+15555550100">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2Z"/></svg>
+          <span class="en">Call Pastor Name</span><span class="es">Llame al Pastor Name</span> · (555) 555-0100
+        </a>
+        <a class="button outline" href="https://www.facebook.com/YourChurchPage" target="_blank" rel="noopener">
+          <span class="en">Find us on Facebook</span><span class="es">Síganos en Facebook</span>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+        <a class="button youtube" href="https://www.youtube.com/@yourchurch" target="_blank" rel="noopener">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4Z"/></svg>
+          <span class="en">Watch us on YouTube</span><span class="es">Véanos en YouTube</span>
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== Footer ===== -->
+  <footer class="site-footer">
+    <img src="images/logo.png" alt="" width="460" height="434">
+    <p>123 Main St, Your City, ST 00000</p>
+    <p>© <span id="year"></span> Your Church Name · <a class="member-login" href="/login"><span class="en">Member login</span><span class="es">Acceso para miembros</span></a></p>
+  </footer>
+
+  <script src="js/events.js?v=2026-11-15"></script>
+  <script src="js/main.js?v=2026-11-16"></script>
+</body>
+</html>
