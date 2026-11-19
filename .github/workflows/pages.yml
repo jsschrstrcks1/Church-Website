@@ -1,0 +1,43 @@
+name: Deploy to GitHub Pages
+
+# NOW: publishes the static `public/` site to GitHub Pages
+#   https://jsschrstrcks1.github.io/Church-Website/
+# LONG TERM: lakeviewfellowshipchurch.com cuts over via the Cloudflare Pages
+# workflow (deploy.yml) once the backend phase is done and DNS moves off
+# `*.finalweb.net` (GoDaddy nameservers changed last). This Pages workflow stays
+# additive and harmless alongside it.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload static site (public/)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
