@@ -5,7 +5,7 @@
 // below (YOUTUBE_CHANNEL_ID starts with "UC"; FACEBOOK_URL is your church's page).
 const FIREBASE_PROJECT_ID = '';
 const FIREBASE_API_KEY = '';
-const YOUTUBE_CHANNEL_ID = 'YOUTUBE_CHANNEL_ID_PLACEHOLDER';
+const YOUTUBE_CHANNEL_ID = 'UCWMPfjgxhLvh7e8fpsjBPpw';
 const FACEBOOK_URL = 'https://www.facebook.com/LakeviewFellowshipChurch/';
 // NOTE: with FIREBASE_PROJECT_ID empty, the Firestore calls fail fast and the page shows
 // only the fixed events in js/events.js and the offline live schedule. This keeps the
