@@ -82,7 +82,7 @@ p { margin: 0 0 1em; }
   display: grid; grid-template-columns: 1.3fr minmax(280px, 380px); align-items: center; gap: 48px;
   padding: 80px var(--pad-x) 120px;
   background:
-    linear-gradient(90deg, rgba(11,29,68,.96) 0%, rgba(11,29,68,.85) 45%, rgba(11,29,68,.35) 100%),
+    linear-gradient(105deg, rgba(11,29,68,.82) 0%, rgba(11,29,68,.45) 55%, rgba(11,29,68,.12) 100%),
     linear-gradient(0deg, var(--paper) 0%, rgba(255,253,248,0) 18%),
     url("../images/hero-church.jpg") center / cover no-repeat;
 }
