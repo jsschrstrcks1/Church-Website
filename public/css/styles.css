@@ -214,7 +214,7 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--blue); outline-
 
   .hero { grid-template-columns: 1fr; min-height: 0; padding-top: 64px; padding-bottom: 72px;
     background:
-      linear-gradient(180deg, rgba(11,29,68,.96) 0%, rgba(11,29,68,.9) 100%),
+      linear-gradient(180deg, rgba(11,29,68,.82) 0%, rgba(11,29,68,.55) 100%),
       url("../images/hero-church.jpg") center / cover no-repeat; }
   .welcome, .section-head, .connect { grid-template-columns: 1fr; gap: 28px; }
   .section-head > p { justify-self: start; }
