@@ -1,13 +1,15 @@
-// EDIT: set these for your church before publishing.
-//   FIREBASE_PROJECT_ID  your Firebase project id (Firebase console > Project settings)
-//   FIREBASE_API_KEY     the web API key from the same page (it is public by design; access is
-//                        controlled by Firestore security rules)
-//   YOUTUBE_CHANNEL_ID   your channel id (starts with "UC"; YouTube Studio > Settings > Channel > Advanced)
-//   FACEBOOK_URL         your Facebook Page
-const FIREBASE_PROJECT_ID = 'your-firebase-project-id';
-const FIREBASE_API_KEY = 'YOUR_FIREBASE_WEB_API_KEY';
-const YOUTUBE_CHANNEL_ID = 'YOUR_YOUTUBE_CHANNEL_ID';
+// Lakeview Fellowship Church — self-hosted public site (Cloudflare Pages).
+// Synthesized from the syndication-engine template. The public page no longer needs
+// Firebase: admin events and the live flag fall back to the fixed list offline, and are
+// re-wired to the Cloudflare Workers API in the backend phase. EDIT: set the two constants
+// below (YOUTUBE_CHANNEL_ID starts with "UC"; FACEBOOK_URL is your church's page).
+const FIREBASE_PROJECT_ID = '';
+const FIREBASE_API_KEY = '';
+const YOUTUBE_CHANNEL_ID = 'YOUTUBE_CHANNEL_ID_PLACEHOLDER';
 const FACEBOOK_URL = 'https://www.facebook.com/YourChurchPage';
+// NOTE: with FIREBASE_PROJECT_ID empty, the Firestore calls fail fast and the page shows
+// only the fixed events in js/events.js and the offline live schedule. This keeps the
+// public site fully static (no Firebase) until the Workers/D1 API replaces it.
 const FIRESTORE_DOCS = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
 const root = document.documentElement;
@@ -51,8 +53,6 @@ nav.querySelectorAll('a').forEach((a) =>
 );
 
 // ----- Events calendar -----
-// Two sources: the fixed list in js/events.js, plus the events church admins add in the
-// members area (stored in Firestore and read here through its public REST API).
 const byDate = (a, b) => a.date.localeCompare(b.date);
 const fileEvents = window.CHURCH_EVENTS || [];
 let events = fileEvents.slice().sort(byDate);
@@ -75,7 +75,6 @@ function renderCalendar() {
   const monthName = cap(first.toLocaleDateString(locale(), { month: 'long' }));
   calTitle.textContent = `${monthName} ${viewYear}`;
 
-  // Weekday headers
   weekdayRow.innerHTML = '';
   for (let i = 0; i < 7; i++) {
     const d = new Date(2026, 1, 1 + i); // Feb 1, 2026 is a Sunday
@@ -84,7 +83,6 @@ function renderCalendar() {
     weekdayRow.appendChild(s);
   }
 
-  // Days
   grid.innerHTML = '';
   for (let i = 0; i < first.getDay(); i++) {
     const blank = document.createElement('div');
@@ -116,7 +114,6 @@ function renderCalendar() {
     grid.appendChild(cell);
   }
 
-  // "This Month" list
   entries.innerHTML = '';
   if (!monthEvents.length) {
     const p = document.createElement('p');
@@ -160,7 +157,9 @@ document.querySelector('.cal-next').addEventListener('click', () => {
 
 renderCalendar();
 
-// Events from the members area: from a year ago onward, so past months still show when browsing back
+// Events from the members area: from a year ago onward, so past months still show when browsing back.
+// NOTE (self-hosted): FIREBASE_PROJECT_ID is empty, so this fetch targets a non-existent project and
+// fails fast (falls through to the catch). The Cloudflare Workers API phase will replace this call.
 async function loadAdminEvents() {
   const since = new Date(today.getFullYear() - 1, today.getMonth(), 1);
   const sinceKey = `${since.getFullYear()}-${pad(since.getMonth() + 1)}-01`;
@@ -201,16 +200,11 @@ async function loadAdminEvents() {
 loadAdminEvents();
 
 // ----- Watch live -----
-// Live Studio (members area) sets the public flag publicLive/status while the church streams.
-// Live: show the "Live now" bar and the YouTube player. Otherwise: "Watch us live Sundays...".
-// A flag whose heartbeat is more than 3 minutes old is ignored, in case a stream ended badly.
-// YOUTUBE_CHANNEL_ID and FACEBOOK_URL are set at the top of this file.
 const liveSection = document.getElementById('live');
 const liveBar = document.getElementById('live-bar');
 const livePlayer = document.getElementById('live-player');
 let isLive = false;
 
-// videoId: the exact YouTube broadcast, when Live Studio created it; otherwise the channel's live stream
 function setLive(live, onYouTube, videoId) {
   const key = `${onYouTube}:${videoId || ''}`;
   if (live === isLive && (!live || livePlayer.dataset.youtube === key)) return;
@@ -221,11 +215,10 @@ function setLive(live, onYouTube, videoId) {
   liveSection.querySelector('.live-on').hidden = !live;
   liveBar.hidden = !live;
   livePlayer.dataset.youtube = key;
-  livePlayer.textContent = ''; // removing the player also stops it
+  livePlayer.textContent = '';
   if (!live) return;
   if (onYouTube) {
     const frame = document.createElement('iframe');
-    // Muted so browsers allow it to start by itself; viewers tap the speaker to listen
     frame.src = videoId
       ? `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?autoplay=1&mute=1`
       : `https://www.youtube.com/embed/live_stream?channel=${YOUTUBE_CHANNEL_ID}&autoplay=1&mute=1`;
@@ -234,7 +227,6 @@ function setLive(live, onYouTube, videoId) {
     frame.allowFullscreen = true;
     livePlayer.appendChild(frame);
   } else {
-    // Streaming to Facebook only: link there
     livePlayer.innerHTML = `<div class="live-fb"><a class="button outline" href="${FACEBOOK_URL}" target="_blank" rel="noopener">`
       + '<span class="en">Watch on Facebook</span><span class="es">Véalo en Facebook</span></a></div>';
   }
