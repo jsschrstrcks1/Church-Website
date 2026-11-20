@@ -2,8 +2,7 @@
 // Events live in Firestore (events/{id}). The home page also still shows the fixed list in
 // public/js/events.js (holidays and older entries); those appear here read-only.
 import { useEffect, useMemo, useState } from 'react';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { apiEvents, apiCreateEvent, apiUpdateEvent, apiDeleteEvent } from '../../api/client';
 import { useMemberAuth } from '../../context/MemberAuthContext';
 import AdminNav from './AdminNav';
 
@@ -42,16 +41,13 @@ const EventsManager = () => {
   const [showPast, setShowPast] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(
-      query(collection(db, 'events'), orderBy('date')),
-      (snap) => setEvents(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
-      (err) => {
-        console.error('Error loading events:', err);
-        setEvents([]);
-      }
-    );
+    let cancelled = false;
+    (async () => {
+      const rows = await apiEvents().catch((err) => { console.error('Error loading events:', err); return []; });
+      if (!cancelled) setEvents(rows);
+    })();
     loadFileEvents().then(setFileEvents);
-    return unsubscribe;
+    return () => { cancelled = true; };
   }, []);
 
   const today = todayKey();
@@ -86,22 +82,12 @@ const EventsManager = () => {
     setSaving(true);
     setError('');
     try {
-      const now = new Date().toISOString();
       if (draft.id) {
-        await updateDoc(doc(db, 'events', draft.id), {
-          ...data,
-          updatedAt: now,
-          updatedBy: memberProfile.uid,
-          updatedByName: memberProfile.name
-        });
+        await apiUpdateEvent(draft.id, { ...data });
       } else {
-        await addDoc(collection(db, 'events'), {
-          ...data,
-          createdAt: now,
-          updatedAt: now,
-          createdBy: memberProfile.uid,
-          createdByName: memberProfile.name
-        });
+        const created = await apiCreateEvent({ ...data });
+        const row = { ...data, id: created.id };
+        setEvents((prev) => [...(prev || []), row].sort((a, b) => String(a.date).localeCompare(String(b.date))));
       }
       setDraft(null);
     } catch (err) {
@@ -115,7 +101,8 @@ const EventsManager = () => {
   const handleDelete = async (event) => {
     if (!window.confirm(`Delete "${event.en}" on ${formatDate(event.date)}? It will disappear from the website calendar.`)) return;
     try {
-      await deleteDoc(doc(db, 'events', event.id));
+      await apiDeleteEvent(event.id);
+      setEvents((prev) => (prev || []).filter((e) => e.id !== event.id));
       if (draft?.id === event.id) setDraft(null);
     } catch (err) {
       console.error('Error deleting event:', err);

@@ -1,10 +1,8 @@
 // Invite link page (/invite/:inviteToken): the invitee picks a password and their account is created.
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { httpsCallable } from 'firebase/functions';
-import { db, auth, functions, CHURCH_SHORT_NAME } from '../../firebase/config';
+import { apiInviteLookup, apiAcceptInvite } from '../../api/client';
+import { CHURCH_SHORT_NAME } from '../../firebase/config';
 import AuthLayout, { inputClass, primaryButtonClass } from './AuthLayout';
 
 const InviteSetup = () => {
@@ -22,14 +20,10 @@ const InviteSetup = () => {
   useEffect(() => {
     const loadInvite = async () => {
       try {
-        const inviteDoc = await getDoc(doc(db, 'invites', inviteToken));
-        if (!inviteDoc.exists()) {
-          setLoadError('This invite link is invalid or has already been used.');
-        } else if (inviteDoc.data().expiresAt && new Date(inviteDoc.data().expiresAt) < new Date()) {
-          setLoadError('This invite link has expired. Ask a church admin for a new one.');
-        } else {
-          setInvite(inviteDoc.data());
-        }
+        const data = await apiInviteLookup(inviteToken);
+        if (data?.error === 'invite-not-found') setLoadError('This invite link is invalid or has already been used.');
+        else if (data?.error === 'invite-expired') setLoadError('This invite link has expired. Ask a church admin for a new one.');
+        else setInvite(data);
       } catch (err) {
         console.error('Error loading invite:', err);
         setLoadError('Could not load this invite. Check your connection and try again.');
@@ -54,9 +48,7 @@ const InviteSetup = () => {
     setError('');
     setSubmitting(true);
     try {
-      const acceptInvite = httpsCallable(functions, 'acceptInvite');
-      await acceptInvite({ inviteToken, password });
-      await signInWithEmailAndPassword(auth, invite.email, password);
+      await apiAcceptInvite(inviteToken, invite.email, password);
       navigate('/admin/dashboard', { replace: true });
     } catch (err) {
       console.error('Error accepting invite:', err);

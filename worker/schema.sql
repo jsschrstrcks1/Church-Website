@@ -29,10 +29,12 @@ CREATE INDEX IF NOT EXISTS idx_sessions_member ON sessions(member_id);
 -- Invites (owner-created, single-use)
 CREATE TABLE IF NOT EXISTS invites (
   code       TEXT PRIMARY KEY,                -- random single-use code
+  name       TEXT NOT NULL DEFAULT '',
   email      TEXT NOT NULL,
   role       TEXT NOT NULL DEFAULT 'admin',
   created_by TEXT NOT NULL REFERENCES members(id),
   created_at TEXT NOT NULL,
+  expires_at TEXT,
   used_at    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_invites_email ON invites(email);

@@ -47,7 +47,10 @@ export default {
       if (path === '/_health') return cors(json({ ok: true }));
 
       const db = env.DB;
-      const body = request.method !== 'GET' && request.method !== 'DELETE' ? await request.json().catch(() => ({})) : {};
+      // Parse JSON body for all methods except GET (DELETE includes it).
+      const body = request.headers.get('content-type')?.includes('application/json')
+        ? await request.json().catch(() => ({}))
+        : {};
 
       // Public events listing
       if (path === '/events' && request.method === 'GET') {
@@ -100,8 +103,16 @@ export default {
         return cors(json({ token, member: publicMember(row) }));
       }
 
-      if (path === '/auth/accept-invite' && request.method === 'POST') {
-        const iv = await db.prepare("SELECT * FROM invites WHERE code = ? AND used_at IS NULL AND lower(email) = lower(?)")
+      // Public invite lookup: returns only enough to show the welcome screen
+      const invMatch = path.match(/^\/invites\/([\w]+)$/);
+      if (invMatch && request.method === 'GET') {
+        const iv = await db.prepare("SELECT name, email, role, expires_at FROM invites WHERE code = ? AND used_at IS NULL").bind(invMatch[1]).first();
+        if (!iv) return cors(json({ error: 'invite-not-found' }, 404));
+        if (iv.expires_at && Date.parse(iv.expires_at) < Date.now()) return cors(json({ error: 'invite-expired' }, 410));
+        return cors(json({ name: iv.name, email: iv.email, role: iv.role }));
+      }
+
+      if (path === '/auth/accept-invite' && request.method === 'POST') {        const iv = await db.prepare("SELECT * FROM invites WHERE code = ? AND used_at IS NULL AND lower(email) = lower(?)")
           .bind(body.code || '', body.email || '').first();
         if (!iv) return cors(json({ error: 'invite-not-found' }, 400));
         if (typeof body.password !== 'string' || body.password.length < 8) return cors(json({ error: 'password-too-short' }, 400));
@@ -130,6 +141,26 @@ export default {
       // Me
       if (path === '/auth/me' && request.method === 'GET') return cors(json({ member: publicMember(member) }));
 
+      // Profile: update name
+      if (path === '/auth/profile' && request.method === 'POST') {
+        if (typeof body.name === 'string' && body.name.trim()) {
+          await db.prepare('UPDATE members SET name = ? WHERE id = ?').bind(body.name.trim(), member.id).run();
+        }
+        return cors(json({ member: publicMember(await db.prepare('SELECT * FROM members WHERE id = ?').bind(member.id).first()) }));
+      }
+
+      // Profile: change password (verifies current password first)
+      if (path === '/auth/password' && request.method === 'POST') {
+        const row = await db.prepare('SELECT * FROM members WHERE id = ?').bind(member.id).first();
+        if (!row || typeof body.current !== 'string' || !(await verifyPassword(body.current, row.pass_hash))) {
+          return cors(json({ error: 'wrong-current-password' }, 400));
+        }
+        if (typeof body.next !== 'string' || body.next.length < 8) return cors(json({ error: 'password-too-short' }, 400));
+        await db.prepare('UPDATE members SET pass_hash = ? WHERE id = ?').bind(await hashPassword(body.next), member.id).run();
+        return cors(json({ ok: true }));
+      }
+
+
       // Members management (owner only)
       const isOwner = member.role === 'owner';
       if (path === '/members' && request.method === 'GET') {
@@ -141,15 +172,46 @@ export default {
         if (!isOwner) return cors(json({ error: 'forbidden' }, 403));
         if (typeof body.email !== 'string' || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email)) return cors(json({ error: 'invalid-email' }, 400));
         const code = crypto.randomUUID().replace(/-/g, '').slice(0, 24);
-        await db.prepare('INSERT INTO invites (code, email, role, created_by, created_at) VALUES (?,?,?,?,?)')
-          .bind(code, norm(body.email), body.role === 'owner' ? 'owner' : 'admin', member.id, new Date().toISOString()).run();
-        return cors(json({ code }));
+        const name = (body.name || body.email.split('@')[0]).trim();
+        const ttl = Number.isFinite(body.days) ? Math.min(90, Math.max(1, body.days)) : 14;
+        const expiresAt = new Date(Date.now() + ttl * 24 * 60 * 60 * 1000).toISOString();
+        await db.prepare('INSERT INTO invites (code, name, email, role, created_by, created_at, expires_at) VALUES (?,?,?,?,?,?,?)')
+          .bind(code, name, norm(body.email), body.role === 'owner' ? 'owner' : 'admin', member.id, new Date().toISOString(), expiresAt).run();
+        return cors(json({ code, name, email: norm(body.email), role: body.role === 'owner' ? 'owner' : 'admin', createdAt: new Date().toISOString(), expiresAt }));
+      }
+      if (path === '/members/invites' && request.method === 'GET') {
+        if (!isOwner) return cors(json({ error: 'forbidden' }, 403));
+        const rows = await db.prepare("SELECT code AS id, name, email, role, created_at, expires_at AS expiresAt FROM invites WHERE used_at IS NULL ORDER BY created_at DESC").all();
+        return cors(json(rows.results));
+      }
+      if (path === '/members/invites' && request.method === 'DELETE') {
+        if (!isOwner) return cors(json({ error: 'forbidden' }, 403));
+        if (typeof body.code !== 'string') return cors(json({ error: 'invalid-invite' }, 400));
+        await db.prepare('DELETE FROM invites WHERE code = ?').bind(body.code).run();
+        return cors(json({ ok: true }));
+      }
+      if (path === '/members/role' && request.method === 'POST') {
+        if (!isOwner) return cors(json({ error: 'forbidden' }, 403));
+        if (!body.id) return cors(json({ error: 'invalid-member' }, 400));
+        const target = await db.prepare("SELECT * FROM members WHERE id = ? AND account_status != 'removed'").bind(body.id).first();
+        if (!target) return cors(json({ error: 'not-found' }, 404));
+        if (body.role === 'owner') {
+          const owners = await db.prepare("SELECT COUNT(*) AS n FROM members WHERE role = 'owner' AND account_status = 'active'").first();
+          if (owners.n <= 1) return cors(json({ error: 'last-owner' }, 400));
+        }
+        const role = body.role === 'owner' ? 'owner' : 'admin';
+        await db.prepare('UPDATE members SET role = ? WHERE id = ?').bind(role, body.id).run();
+        return cors(json({ ok: true }));
       }
       if (path === '/members/remove' && request.method === 'POST') {
         if (!isOwner) return cors(json({ error: 'forbidden' }, 403));
         if (!body.id || body.id === member.id) return cors(json({ error: 'cannot-remove-self' }, 400));
-        await db.prepare("UPDATE members SET account_status = 'removed' WHERE id = ?").bind(body.id).run();
-        await db.prepare('DELETE FROM sessions WHERE member_id = ?').bind(body.id).run();
+        if (body.restore === true) {
+          await db.prepare("UPDATE members SET account_status = 'active' WHERE id = ?").bind(body.id).run();
+        } else {
+          await db.prepare("UPDATE members SET account_status = 'removed' WHERE id = ?").bind(body.id).run();
+          await db.prepare('DELETE FROM sessions WHERE member_id = ?').bind(body.id).run();
+        }
         return cors(json({ ok: true }));
       }
 

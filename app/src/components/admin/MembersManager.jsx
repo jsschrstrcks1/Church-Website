@@ -2,21 +2,13 @@
 // Invites are links. The owner copies the link or opens it in their own email app; there is
 // no automatic invite email, so nothing depends on an email-sending account.
 import { useEffect, useState } from 'react';
-import { collection, doc, setDoc, deleteDoc, updateDoc, onSnapshot } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-import { db, functions, SITE_URL, CHURCH_NAME, CHURCH_SHORT_NAME } from '../../firebase/config';
+import { apiMembers, apiInvites, apiInvite, apiCancelInvite, apiChangeRole, apiRemoveMember } from '../../api/client';
+import { SITE_URL, CHURCH_NAME, CHURCH_SHORT_NAME } from '../../firebase/config';
 import { useMemberAuth } from '../../context/MemberAuthContext';
 import AdminNav from './AdminNav';
 
 const INVITE_DAYS = 14;
 const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
-
-// 32 random hex characters: the invite link's secret
-const newToken = () => {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-};
 
 // Invites open on the site that is in use (the live site, or localhost while developing)
 const inviteLink = (token) => `${import.meta.env.DEV ? window.location.origin : SITE_URL}/invite/${token}`;
@@ -52,19 +44,17 @@ const MembersManager = () => {
   const [busyId, setBusyId] = useState(null);
 
   useEffect(() => {
-    const unsubMembers = onSnapshot(collection(db, 'members'), (snap) => {
-      setMembers(snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
-    }, (err) => {
-      console.error('Error loading members:', err);
-      setMembers([]);
-    });
-    const unsubInvites = onSnapshot(collection(db, 'invites'), (snap) => {
-      setInvites(snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
-    }, (err) => {
-      console.error('Error loading invites:', err);
-      setInvites([]);
-    });
-    return () => { unsubMembers(); unsubInvites(); };
+    let cancelled = false;
+    (async () => {
+      const [m, iv] = await Promise.all([
+        apiMembers().catch(() => []),
+        apiInvites().catch(() => [])
+      ]);
+      if (cancelled) return;
+      setMembers(m.map((x) => ({ name: x.name, email: x.email, id: x.id, role: x.role, accountStatus: x.accountStatus })).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+      setInvites(iv);
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const activeMembers = (members || []).filter((m) => m.accountStatus !== 'removed');
@@ -90,18 +80,8 @@ const MembersManager = () => {
     setCreating(true);
     setFormError('');
     try {
-      const token = newToken();
-      const invite = {
-        name,
-        email,
-        role: form.role,
-        invitedBy: memberProfile.uid,
-        invitedByName: memberProfile.name,
-        createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + INVITE_DAYS * 24 * 60 * 60 * 1000).toISOString()
-      };
-      await setDoc(doc(db, 'invites', token), invite);
-      setNewInvite({ id: token, ...invite });
+      const invite = await apiInvite(email, form.role === 'owner' ? 'owner' : 'admin', name);
+      setNewInvite({ id: invite.code, name, email, role: form.role, expiresAt: invite.expiresAt });
       setForm({ name: '', email: '', role: 'admin' });
     } catch (err) {
       console.error('Error creating invite:', err);
@@ -124,7 +104,8 @@ const MembersManager = () => {
   const cancelInvite = async (invite) => {
     if (!window.confirm(`Cancel the invite for ${invite.name}? The link will stop working.`)) return;
     try {
-      await deleteDoc(doc(db, 'invites', invite.id));
+      await apiCancelInvite(invite.id);
+      setInvites((prev) => (prev || []).filter((i) => i.code !== invite.id && i.id !== invite.id));
       if (newInvite?.id === invite.id) setNewInvite(null);
     } catch (err) {
       console.error('Error canceling invite:', err);
@@ -137,7 +118,8 @@ const MembersManager = () => {
     if (!window.confirm(`${verb === 'make' ? 'Make' : 'Change'} ${member.name} ${role === 'owner' ? 'an owner? Owners can invite and remove members.' : 'to a regular admin? They will no longer be able to invite or remove members.'}`)) return;
     setBusyId(member.id);
     try {
-      await updateDoc(doc(db, 'members', member.id), { role, updatedAt: new Date().toISOString() });
+      await apiChangeRole(member.id, role);
+      setMembers((prev) => (prev || []).map((m) => (m.id === member.id ? { ...m, role } : m)));
     } catch (err) {
       console.error('Error changing role:', err);
       alert('Could not change the role. Please try again.');
@@ -153,7 +135,8 @@ const MembersManager = () => {
     if (!window.confirm(message)) return;
     setBusyId(member.id);
     try {
-      await httpsCallable(functions, 'removeMember')({ memberId: member.id, restore });
+      await apiRemoveMember(member.id, restore);
+      setMembers((prev) => (prev || []).map((m) => (m.id === member.id ? { ...m, accountStatus: restore ? 'active' : 'removed' } : m)));
     } catch (err) {
       console.error('Error changing access:', err);
       alert(err.message || 'Could not update access. Please try again.');

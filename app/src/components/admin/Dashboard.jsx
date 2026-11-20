@@ -1,8 +1,7 @@
 // Member dashboard: tiles for each tool, upcoming calendar events, and Share Your App.
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { apiEvents } from '../../api/client';
 import { useMemberAuth } from '../../context/MemberAuthContext';
 import AdminNav from './AdminNav';
 import ShareYourApp from './ShareYourApp';
@@ -59,21 +58,22 @@ const Dashboard = ({ memberProfile }) => {
   const [upcoming, setUpcoming] = useState(null);
 
   useEffect(() => {
+    let cancelled = false;
     const load = async () => {
       try {
-        const snap = await getDocs(query(
-          collection(db, 'events'),
-          where('date', '>=', todayKey()),
-          orderBy('date'),
-          limit(5)
-        ));
-        setUpcoming(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        const all = await apiEvents();
+        const rows = all
+          .filter((e) => e.date && e.date >= todayKey())
+          .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+          .slice(0, 5);
+        if (!cancelled) setUpcoming(rows);
       } catch (error) {
         console.error('Error loading upcoming events:', error);
-        setUpcoming([]);
+        if (!cancelled) setUpcoming([]);
       }
     };
     load();
+    return () => { cancelled = true; };
   }, []);
 
   return (

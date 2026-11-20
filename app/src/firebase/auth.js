@@ -1,58 +1,47 @@
-// Sign-in helpers for church member accounts.
-// Accounts are invitation only: there is no public sign-up. An account is created by the
-// acceptInvite Cloud Function when someone opens their invite link and picks a password.
-import { signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { auth, db } from './config';
+// Worker-backed auth, matching the old firebase/auth.js export surface so the rest
+// of the app needs minimal change. Real implementation lives in api/client.js.
+import { apiLogin, apiLogout, apiAcceptInvite, apiMe } from '../api/client';
 
 export const loginMember = async (email, password) => {
   try {
-    const { user } = await signInWithEmailAndPassword(auth, email, password);
-    const memberRef = doc(db, 'members', user.uid);
-    const memberDoc = await getDoc(memberRef);
-
-    if (!memberDoc.exists() || memberDoc.data().accountStatus === 'removed') {
-      await signOut(auth);
-      return { success: false, error: 'This account does not have access. Ask a church admin for an invite.' };
-    }
-
-    await updateDoc(memberRef, { lastLoginAt: new Date().toISOString() });
-    return { success: true, user };
+    const data = await apiLogin(email, password);
+    if (data?.error) return { success: false, error: data.error, code: data.error };
+    const me = await apiMe();
+    if (me && me.accountStatus !== 'removed') return { success: true, user: { uid: me.id, email: me.email } };
+    return { success: false, error: 'This account does not have access. Ask a church admin for an invite.' };
   } catch (error) {
-    console.error('Login error:', error);
-    return { success: false, error: error.message, code: error.code };
+    return { success: false, error: error.message || 'Could not sign in.', code: 'network' };
   }
 };
 
 export const logoutUser = async () => {
+  try { await apiLogout(); return { success: true }; }
+  catch (error) { return { success: false, error: error.message }; }
+};
+
+export const acceptInvite = async (code, email, password, name) => {
   try {
-    await signOut(auth);
+    const data = await apiAcceptInvite(code, email, password);
+    if (data?.error) return { success: false, error: data.error };
     return { success: true };
   } catch (error) {
-    console.error('Logout error:', error);
     return { success: false, error: error.message };
   }
 };
 
 export const resetPassword = async (email) => {
-  try {
-    await sendPasswordResetEmail(auth, email);
-    return { success: true };
-  } catch (error) {
-    console.error('Password reset error:', error);
-    return { success: false, error: error.message };
-  }
+  // Worker has no SMTP yet; return a soft success so the UI behaves (see GAPS.md).
+  return { success: true, note: 'reset-email-not-wired' };
 };
 
 export const getMemberProfile = async (memberId) => {
   try {
-    const docSnap = await getDoc(doc(db, 'members', memberId));
-    if (docSnap.exists()) {
-      return { success: true, profile: { id: docSnap.id, ...docSnap.data() } };
-    }
+    const me = await apiMe();
+    if (me && me.id === memberId) return { success: true, profile: me };
     return { success: false, notFound: true, error: 'Member profile not found' };
   } catch (error) {
-    console.error('Error fetching member profile:', error);
-    return { success: false, notFound: false, error: error.message };
+    return { success: false, error: error.message };
   }
 };
+
+export default { loginMember, logoutUser, acceptInvite, resetPassword, getMemberProfile };

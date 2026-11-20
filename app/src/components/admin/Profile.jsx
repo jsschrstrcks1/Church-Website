@@ -1,8 +1,6 @@
 // Profile: change the name shown on public pages, and change password.
 import { useState } from 'react';
-import { doc, updateDoc, setDoc } from 'firebase/firestore';
-import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
-import { db, auth } from '../../firebase/config';
+import { apiUpdateProfile, apiChangePassword } from '../../api/client';
 import { useMemberAuth } from '../../context/MemberAuthContext';
 import AdminNav from './AdminNav';
 
@@ -32,11 +30,9 @@ const Profile = () => {
     }
     setSavingName(true);
     try {
-      const now = new Date().toISOString();
-      await updateDoc(doc(db, 'members', memberProfile.uid), { name: trimmed, updatedAt: now });
-      // The name visitors see on share pages and newsletters
-      await setDoc(doc(db, 'publicMembers', memberProfile.uid), { name: trimmed, updatedAt: now });
+      const updated = await apiUpdateProfile(trimmed);
       setNameMessage({ type: 'success', text: 'Saved.' });
+      if (updated?.name) setName(updated.name);
     } catch (err) {
       console.error('Error saving name:', err);
       setNameMessage({ type: 'error', text: 'Could not save. Please try again.' });
@@ -57,9 +53,12 @@ const Profile = () => {
     }
     setSavingPassword(true);
     try {
-      const user = auth.currentUser;
-      await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, passwords.current));
-      await updatePassword(user, passwords.next);
+      const result = await apiChangePassword(passwords.current, passwords.next);
+      if (result?.error === 'wrong-current-password') {
+        setPasswordMessage({ type: 'error', text: 'Your current password is not right.' });
+        return;
+      }
+      if (result?.error) { setPasswordMessage({ type: 'error', text: 'Could not change the password. Please try again.' }); return; }
       setPasswords({ current: '', next: '', confirm: '' });
       setPasswordMessage({ type: 'success', text: 'Password changed.' });
     } catch (err) {
