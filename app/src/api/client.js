@@ -1,7 +1,9 @@
 // Lakeview Fellowship — backend API client (replaces the Firebase layer).
 // Talks to the Cloudflare Worker (worker/src/index.js) over plain fetch.
 // Storage of the bearer token: localStorage under 'lakeview_token'.
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://lakeview-fellowship-backend.example.workers.dev';
+// Production: VITE_API_BASE is set at build (see app/.env.production or the deploy
+// workflow). Fallback resolves to the same origin (works when Pages routes /api/* to the Worker).
+const API_BASE = import.meta.env.VITE_API_BASE || `${location.origin}/api`;
 
 const TOKEN_KEY = 'lakeview_token';
 

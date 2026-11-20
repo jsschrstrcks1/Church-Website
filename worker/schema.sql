@@ -102,3 +102,97 @@ CREATE TABLE IF NOT EXISTS public_live (
 -- Seed a single row each so UPSERTs are deterministic.
 INSERT OR IGNORE INTO live_state (id, status) VALUES (1, 'idle');
 INSERT OR IGNORE INTO public_live (id, live) VALUES (1, 0);
+
+-- ============================================================
+-- Content layer: newsletters, forms/RSVPs/polls, share customization
+-- (replaces spaces/church/{newsletters, settings, responses} in Firestore).
+-- JSON columns hold flexible shape (editor content, form schema, poll keys).
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS newsletters (
+  id         TEXT PRIMARY KEY,                -- uuid
+  title      TEXT NOT NULL,
+  status     TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published','archived')),
+  content    TEXT NOT NULL DEFAULT '{}',      -- editor JSON
+  theme      TEXT NOT NULL DEFAULT '{}',      -- background/color/typography JSON
+  created_by TEXT REFERENCES members(id),
+  created_at TEXT NOT NULL,
+  updated_at TEXT,
+  published_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_news_status ON newsletters(status);
+
+-- Newsletter revisions (append-only history)
+CREATE TABLE IF NOT EXISTS newsletter_revisions (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  newsletter_id TEXT NOT NULL REFERENCES newsletters(id),
+  content   TEXT NOT NULL,
+  saved_at  TEXT NOT NULL,
+  saved_by  TEXT REFERENCES members(id)
+);
+
+-- Published newsletters get one row per recipient-visible section for the public /newsletter routes.
+CREATE TABLE IF NOT EXISTS newsletter_public (
+  newsletter_id TEXT PRIMARY KEY REFERENCES newsletters(id),
+  slug         TEXT NOT NULL,                 -- reusable public path token
+  title        TEXT NOT NULL,
+  content_html TEXT NOT NULL DEFAULT '',
+  published_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_nl_public_slug ON newsletter_public(slug);
+
+-- Form definitions + responses (embedded in newsletters). Forms are JSON schemas;
+-- responses keyed by newsletter + form + responder.
+CREATE TABLE IF NOT EXISTS forms (
+  id        TEXT PRIMARY KEY,                 -- uuid
+  newsletter_id TEXT REFERENCES newsletters(id),
+  title     TEXT NOT NULL,
+  schema    TEXT NOT NULL DEFAULT '{}',       -- field definitions JSON
+  settings  TEXT NOT NULL DEFAULT '{}',       -- email notifications etc.
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS form_responses (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  form_id   TEXT NOT NULL REFERENCES forms(id),
+  payload   TEXT NOT NULL DEFAULT '{}',       -- {fieldKey: value}
+  respondent TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_form_res_form ON form_responses(form_id);
+
+-- RSVPs and polls are special forms; keep one table, typed by kind.
+CREATE TABLE IF NOT EXISTS events_rsvps (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id   INTEGER REFERENCES events(id),
+  newsletter_id TEXT REFERENCES newsletters(id),
+  guest_name TEXT,
+  guests     INTEGER NOT NULL DEFAULT 1,
+  notes      TEXT DEFAULT '',
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS poll_votes (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  poll_id     TEXT NOT NULL,                  -- form id of the poll
+  option_text TEXT NOT NULL,
+  voter       TEXT,
+  created_at  TEXT NOT NULL
+);
+
+-- Share page customization (what /share shows): one row per site.
+CREATE TABLE IF NOT EXISTS share_settings (
+  id      INTEGER PRIMARY KEY CHECK (id = 1),
+  payload TEXT NOT NULL DEFAULT '{}'          -- colors, links, intro JSON
+);
+INSERT OR IGNORE INTO share_settings (id) VALUES (1);
+
+-- Image uploads (replaces Firebase Storage). Bytes kept in memory by the Worker
+-- and served at GET /files/:id; metadata here.
+CREATE TABLE IF NOT EXISTS files (
+  id          TEXT PRIMARY KEY,               -- uuid
+  name        TEXT NOT NULL,
+  mime        TEXT NOT NULL,
+  size        INTEGER NOT NULL,
+  data        TEXT NOT NULL,                  -- base64
+  uploaded_by TEXT REFERENCES members(id),
+  created_at  TEXT NOT NULL
+);

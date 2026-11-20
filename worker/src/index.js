@@ -130,6 +130,37 @@ export default {
         return cors(json({ token, member: publicMember(await db.prepare('SELECT * FROM members WHERE id = ?').bind(id).first()) }));
       }
 
+      // ====== Public (no auth) content endpoints ======
+      // Form response (visitors RSVP/submit), poll vote, share read, file serve.
+      const formRespPost = path.match(/^\/forms\/([\w-]+)\/responses$/);
+      if (formRespPost && request.method === 'POST') {
+        const formId = formRespPost[1];
+        await db.prepare('INSERT INTO form_responses (form_id, payload, respondent, created_at) VALUES (?,?,?,?)')
+          .bind(formId, JSON.stringify(body.payload || {}), (body.respondent || '').toString(), new Date().toISOString()).run();
+        return cors(json({ ok: true }));
+      }
+      if (path === '/rsvps' && request.method === 'POST') {
+        const r = await db.prepare('INSERT INTO events_rsvps (event_id, newsletter_id, guest_name, guests, notes, created_at) VALUES (?,?,?,?,?,?)')
+          .bind(body.eventId || null, body.newsletterId || null, body.guestName || '', Number(body.guests) || 1, body.notes || '', new Date().toISOString()).run();
+        return cors(json({ id: r.meta.last_row_id }));
+      }
+      if (path === '/polls/vote' && request.method === 'POST') {
+        await db.prepare('INSERT INTO poll_votes (poll_id, option_text, voter, created_at) VALUES (?,?,?,?)')
+          .bind(body.pollId, body.optionText || '', body.voter || null, new Date().toISOString()).run();
+        return cors(json({ ok: true }));
+      }
+      if (path === '/share/settings' && request.method === 'GET') {
+        const row = await db.prepare('SELECT payload FROM share_settings WHERE id = 1').first();
+        return cors(json(row ? JSON.parse(row.payload || '{}') : {}));
+      }
+      const fileGet = path.match(/^\/files\/([\w-]+)$/);
+      if (fileGet && request.method === 'GET') {
+        const row = await db.prepare('SELECT id, name, mime, data FROM files WHERE id = ?').bind(fileGet[1]).first();
+        if (!row) return new Response('not found', { status: 404 });
+        const bin = atob(row.data.replace(/^data:[^;]+;base64,/, ''));
+        return new Response(new Uint8Array([...bin].map((c) => c.charCodeAt(0))), { headers: { 'Content-Type': row.mime, 'Cache-Control': 'public, max-age=31536000' } });
+      }
+
       if (!authed) return cors(json({ error: 'unauthorized' }, 401));
 
       // Logout
@@ -268,6 +299,114 @@ export default {
         return cors(json(list.results));
       }
 
+      // ================= Content: newsletters =================
+      if (path === '/newsletters' && request.method === 'GET') {
+        const rows = await db.prepare("SELECT id,title,status,created_at,updated_at,published_at FROM newsletters WHERE status != 'archived' OR status = 'published' ORDER BY created_at DESC").all();
+        return cors(json(rows.results));
+      }
+      if (path === '/newsletters' && request.method === 'POST') {
+        const id = crypto.randomUUID();
+        const now = new Date().toISOString();
+        await db.prepare('INSERT INTO newsletters (id,title,status,content,theme,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)')
+          .bind(id, (body.title || 'Untitled').trim(), body.status === 'published' ? 'published' : 'draft', JSON.stringify(body.content || {}), JSON.stringify(body.theme || {}), member.id, now, now).run();
+        return cors(json({ id }));
+      }
+      const nlMatch = path.match(/^\/newsletters\/([\w-]+)$/);
+      if (nlMatch && request.method === 'GET') {
+        const row = await db.prepare('SELECT * FROM newsletters WHERE id = ?').bind(nlMatch[1]).first();
+        if (!row) return cors(json({ error: 'not-found' }, 404));
+        return cors(json({ ...row, content: JSON.parse(row.content || '{}'), theme: JSON.parse(row.theme || '{}') }));
+      }
+      if (nlMatch && request.method === 'PUT') {
+        const now = new Date().toISOString();
+        if (body.title !== undefined) await db.prepare('UPDATE newsletters SET title = ? WHERE id = ?').bind((body.title || '').trim(), nlMatch[1]).run();
+        if (body.content !== undefined) { await db.prepare('UPDATE newsletters SET content = ? WHERE id = ?').bind(JSON.stringify(body.content), nlMatch[1]).run(); await db.prepare('INSERT INTO newsletter_revisions (newsletter_id, content, saved_at, saved_by) VALUES (?,?,?,?)').bind(nlMatch[1], JSON.stringify(body.content), now, member.id).run(); }
+        if (body.theme !== undefined) await db.prepare('UPDATE newsletters SET theme = ? WHERE id = ?').bind(JSON.stringify(body.theme), nlMatch[1]).run();
+        if (body.status === 'published') await db.prepare('UPDATE newsletters SET status = ?, published_at = ? WHERE id = ?').bind('published', now, nlMatch[1]).run();
+        await db.prepare('UPDATE newsletters SET updated_at = ? WHERE id = ?').bind(now, nlMatch[1]).run();
+        return cors(json({ ok: true }));
+      }
+      if (nlMatch && request.method === 'DELETE') {
+        await db.prepare('DELETE FROM newsletters WHERE id = ?').bind(nlMatch[1]).run();
+        await db.prepare('DELETE FROM newsletter_revisions WHERE newsletter_id = ?').bind(nlMatch[1]).run();
+        return cors(json({ ok: true }));
+      }
+      if (nlMatch && path.endsWith('/publish') && request.method === 'POST') {
+        const row = await db.prepare('SELECT * FROM newsletters WHERE id = ?').bind(nlMatch[1]).first();
+        if (!row) return cors(json({ error: 'not-found' }, 404));
+        const now = new Date().toISOString();
+        const slug = (body.slug || row.title || 'newsletter').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+        // Render HTML from editor content: scan for text/heading blocks (simple)
+        let html = renderNewsletterHtml(row.content);
+        await db.prepare(`INSERT INTO newsletter_public (newsletter_id, slug, title, content_html, published_at) VALUES (?,?,?,?,?)
+          ON CONFLICT(newsletter_id) DO UPDATE SET slug=excluded.slug, title=excluded.title, content_html=excluded.content_html, published_at=excluded.published_at`)
+          .bind(row.id, slug || `nl-${row.id.slice(0, 8)}`, row.title, html, now).run();
+        await db.prepare('UPDATE newsletters SET status = ?, published_at = ? WHERE id = ?').bind('published', now, row.id).run();
+        return cors(json({ ok: true, slug }));
+      }
+
+      // ================= Content: forms / responses =================
+      if (path === '/forms' && request.method === 'POST') {
+        const id = crypto.randomUUID();
+        await db.prepare('INSERT INTO forms (id, newsletter_id, title, schema, settings, created_at) VALUES (?,?,?,?,?,?)')
+          .bind(id, body.newsletterId || null, body.title || 'Form', JSON.stringify(body.schema || {}), JSON.stringify(body.settings || {}), new Date().toISOString()).run();
+        return cors(json({ id }));
+      }
+      const formRespGet = path.match(/^\/forms\/([\w-]+)\/responses$/);
+      if (formRespGet && request.method === 'GET') {
+        const rows = await db.prepare('SELECT * FROM form_responses WHERE form_id = ? ORDER BY created_at DESC').bind(formRespGet[1]).all();
+        return cors(json(rows.results.map((r) => ({ ...r, payload: JSON.parse(r.payload || '{}') }))));
+      }
+
+      // ================= Content: RSVPs + polls =================
+      if (path === '/rsvps' && request.method === 'POST') {
+        const r = await db.prepare('INSERT INTO events_rsvps (event_id, newsletter_id, guest_name, guests, notes, created_at) VALUES (?,?,?,?,?,?)')
+          .bind(body.eventId || null, body.newsletterId || null, body.guestName || '', Number(body.guests) || 1, body.notes || '', new Date().toISOString()).run();
+        return cors(json({ id: r.meta.last_row_id }));
+      }
+      if (path === '/polls/vote' && request.method === 'POST') {
+        await db.prepare('INSERT INTO poll_votes (poll_id, option_text, voter, created_at) VALUES (?,?,?,?)')
+          .bind(body.pollId, body.optionText || '', body.voter || null, new Date().toISOString()).run();
+        return cors(json({ ok: true }));
+      }
+      const pollTally = path.match(/^\/polls\/([\w-]+)\/votes$/);
+      if (pollTally && request.method === 'GET') {
+        const rows = await db.prepare('SELECT option_text, COUNT(*) AS votes FROM poll_votes WHERE poll_id = ? GROUP BY option_text').bind(pollTally[1]).all();
+        return cors(json(rows.results));
+      }
+
+      // ================= Share customization =================
+      if (path === '/share/settings' && request.method === 'GET') {
+        const row = await db.prepare('SELECT payload FROM share_settings WHERE id = 1').first();
+        return cors(json(row ? JSON.parse(row.payload || '{}') : {}));
+      }
+      if (path === '/share/settings' && request.method === 'PUT') {
+        await db.prepare('UPDATE share_settings SET payload = ? WHERE id = 1').bind(JSON.stringify(body || {})).run();
+        return cors(json({ ok: true }));
+      }
+
+      // ================= Files (image uploads, replaces Storage) =================
+      if (path === '/files' && request.method === 'POST') {
+        const id = crypto.randomUUID();
+        const data = body.data || '';
+        const mime = typeof body.mime === 'string' ? body.mime : 'application/octet-stream';
+        const buf = atob(data.replace(/^data:[^;]+;base64,/, ''));
+        await db.prepare('INSERT INTO files (id, name, mime, size, data, uploaded_by, created_at) VALUES (?,?,?,?,?,?,?)')
+          .bind(id, (body.name || 'file').slice(0, 200), mime, buf.length, data, member.id, new Date().toISOString()).run();
+        return cors(json({ id }));
+      }
+      const fileMatch = path.match(/^\/files\/([\w-]+)$/);
+      if (fileMatch && request.method === 'GET') {
+        const row = await db.prepare('SELECT id, name, mime, data FROM files WHERE id = ?').bind(fileMatch[1]).first();
+        if (!row) return new Response('not found', { status: 404 });
+        const bin = atob(row.data.replace(/^data:[^;]+;base64,/, ''));
+        return new Response(new Uint8Array([...bin].map((c) => c.charCodeAt(0))), { headers: { 'Content-Type': row.mime, 'Cache-Control': 'public, max-age=31536000' } });
+      }
+      if (fileMatch && request.method === 'DELETE') {
+        await db.prepare('DELETE FROM files WHERE id = ?').bind(fileMatch[1]).run();
+        return cors(json({ ok: true }));
+      }
+
       return cors(json({ error: 'not-found' }, 404));
     } catch (e) {
       return new Response(JSON.stringify({ error: e.message || 'internal' }), { status: 500, headers: JSON_HEADERS });
@@ -285,6 +424,31 @@ function publicMember(m) {
 }
 
 function norm(s) { return (typeof s === 'string' ? s : '').trim().toLowerCase(); }
+
+// Simple renderer: turns editor JSON (ops/blocks {type,text}) into safe HTML for the public view.
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function renderNewsletterHtml(content) {
+  let out = '';
+  let data = content;
+  try { data = typeof content === 'string' ? JSON.parse(content) : content; } catch { data = content; }
+  const blocks = Array.isArray(data) ? data
+    : (data && Array.isArray(data.ops)) ? data.ops
+    : (data && Array.isArray(data.blocks)) ? data.blocks : [];
+  for (const b of blocks) {
+    const text = b.insert ?? b.text ?? (typeof b === 'string' ? b : '');
+    if (b.insert === '\n' || b.insert === undefined && text === '\n') continue;
+    const t = esc(text);
+    const attrs = b.attributes || {};
+    let inner = t;
+    if (attrs.bold) inner = `<strong>${inner}</strong>`;
+    if (attrs.italic) inner = `<em>${inner}</em>`;
+    if (b.type === 'heading' || b.header) out += `<h3 style="margin:.5em 0">${inner}</h3>\n`;
+    else out += `<p style="margin:.35em 0">${inner}</p>\n`;
+  }
+  return out;
+}
 
 function validEvent(b) {
   return b && typeof b.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.date) && typeof b.en === 'string' && b.en.trim();
