@@ -3,10 +3,9 @@ import AdminNav from './AdminNav';
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, orderBy } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { db, storage, SITE_URL, CHURCH_NAME, CHURCH_LOCATION } from '../../firebase/config';
+import { SITE_URL, CHURCH_NAME, CHURCH_LOCATION } from '../../firebase/config';
 import { CHURCH_SPACE } from '../../firebase/church';
+import { apiNewsletterGet, apiNewsletterUpdate, apiNewsletterAction, apiFileUpload, apiFileUrl } from '../../api/client';
 import NewsletterFooter from '../newsletter/NewsletterFooter';
 import NewsletterBackground from '../newsletter/NewsletterBackground';
 import NewsletterBackgroundPicker from '../newsletter/NewsletterBackgroundPicker';
@@ -231,11 +230,10 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
   const buildPublicPath = (uid, suffix = '') => (
     isPrimaryNewsletter ? `/newsletter/${uid}${suffix}` : `/newsletter/${uid}/${newsletterId}${suffix}`
   );
-  const newsletterDocRef = (uid) => doc(db, 'spaces', uid, 'newsletters', newsletterId);
-  const newsletterArchiveCollectionRef = (uid) => collection(db, 'spaces', uid, 'newsletters', newsletterId, 'archive');
-  const newsletterArchiveDocRef = (uid, archiveId) => doc(db, 'spaces', uid, 'newsletters', newsletterId, 'archive', archiveId);
-  const newsletterRevisionsCollectionRef = (uid) => collection(db, 'spaces', uid, 'newsletters', newsletterId, 'revisions');
-  const newsletterRevisionDocRef = (uid, revisionId) => doc(db, 'spaces', uid, 'newsletters', newsletterId, 'revisions', revisionId);
+  // On the self-hosted backend each newsletter is one row in the Worker's SQLite store; the
+  // editor document lives under newsletter.content. Reads/saves go through apiNewsletter*.
+  // (Archive / revision / library subcollections have no Worker API, so those panels are
+  // in-session only on self-host — they still render and stay editable.)
   const [newsletter, setNewsletter] = useState({
     name: '',
     title: '',
@@ -326,22 +324,32 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
     };
   }, [showHeaderEditor]);
   
-  // Load existing newsletter from Firestore - stored per member, per newsletter
+  // Load existing newsletter from the Worker backend (single 'church' space; per-member
+  // docs are gone — the editor doc comes back under newsletter.content)
   useEffect(() => {
     const loadNewsletter = async () => {
       try {
-        if (!memberProfile?.uid || !newsletterId) {
-          console.log('Waiting for member profile / newsletter id to load...');
+        if (!newsletterId) {
+          console.log('Waiting for newsletter id to load...');
           return;
         }
 
         setLoading(true);
-        const newsletterRef = newsletterDocRef(CHURCH_SPACE);
-        const newsletterDoc = await getDoc(newsletterRef);
+        const data = await apiNewsletterGet(newsletterId);
 
-        if (newsletterDoc.exists()) {
-          // Saved fields over the defaults, so a newsletter missing a newer setting still opens
-          setNewsletter((defaults) => ({ ...defaults, ...newsletterDoc.data() }));
+        if (data?.content) {
+          // Saved fields win over the defaults, so a newsletter missing a newer setting still opens
+          setNewsletter((defaults) => ({
+            ...defaults,
+            ...data.content,
+            name: data.name ?? data.content.name ?? defaults.name,
+            title: data.title ?? data.content.title ?? defaults.title,
+            published: data.published ?? data.content.published ?? false,
+            viewCount: data.viewCount ?? data.content.viewCount ?? 0,
+            lastModified: data.lastModified ?? data.content.lastModified ?? defaults.lastModified,
+            isPubliclyListed: data.isPubliclyListed ?? data.content.isPubliclyListed ?? defaults.isPubliclyListed,
+            status: data.status ?? data.content.status ?? defaults.status,
+          }));
         }
       } catch (error) {
         console.error('Error loading newsletter:', error);
@@ -351,74 +359,28 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
     };
 
     loadNewsletter();
-  }, [memberProfile?.uid, newsletterId]);
+  }, [newsletterId]);
 
-  // Load archived newsletters (past issues of THIS newsletter)
+  // Load archived newsletters (past issues of THIS newsletter).
+  // No Worker API backs the archive subcollection yet — the list persists for this session.
   useEffect(() => {
-    const loadArchives = async () => {
-      if (!memberProfile?.uid || !newsletterId) return;
-
-      try {
-        const archiveRef = newsletterArchiveCollectionRef(CHURCH_SPACE);
-        const archiveQuery = query(archiveRef, orderBy('archivedAt', 'desc'));
-        const archiveSnapshot = await getDocs(archiveQuery);
-
-        const archives = archiveSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-
-        setArchivedNewsletters(archives);
-      } catch (error) {
-        console.error('Error loading archives:', error);
-      }
-    };
-
-    loadArchives();
-  }, [memberProfile?.uid, newsletterId]);
+    setArchivedNewsletters([]);
+  }, [newsletterId]);
 
   useEffect(() => {
-    const loadRevisions = async () => {
-      if (!memberProfile?.uid || !newsletterId) return;
-
-      try {
-        const revisionsRef = newsletterRevisionsCollectionRef(CHURCH_SPACE);
-        const revisionsSnapshot = await getDocs(query(revisionsRef, orderBy('savedAt', 'desc')));
-        const revisionData = revisionsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setRevisions(revisionData.slice(0, 8));
-      } catch (error) {
-        console.error('Error loading revisions:', error);
-      }
-    };
-
-    loadRevisions();
-  }, [memberProfile?.uid, newsletterId]);
+    // Revision history lives in-session too (addRevisionEntry keeps it); nothing to fetch on mount.
+    setRevisions([]);
+  }, [newsletterId]);
 
   useEffect(() => {
-    const loadSavedCards = async () => {
-      if (!memberProfile?.uid) return;
-
-      try {
-        const libraryRef = doc(db, 'spaces', CHURCH_SPACE, 'settings', 'newsletterCardLibrary');
-        const librarySnapshot = await getDoc(libraryRef);
-        setSavedCards(librarySnapshot.exists() ? librarySnapshot.data().cards || [] : []);
-      } catch (error) {
-        console.error('Error loading saved newsletter cards:', error);
-      }
-    };
-
-    loadSavedCards();
-  }, [memberProfile?.uid]);
+    // Saved card library is not persisted on the self-hosted backend; start empty,
+    // and saveCardToLibrary keeps it for this session.
+    setSavedCards([]);
+  }, []);
 
   useEffect(() => {
-    if (!memberProfile?.uid) return;
-    getDoc(doc(db, 'spaces', CHURCH_SPACE, 'settings', 'newsletterBrandPresets'))
-      .then((snap) => setCustomPresets(snap.exists() ? snap.data().presets || [] : []))
-      .catch((error) => console.error('Error loading brand presets:', error));
-  }, [memberProfile?.uid]);
+    setCustomPresets([]);
+  }, []);
 
   const createRevisionEntry = (draft, source = 'manual') => {
     const previewText = draft.subtitle || draft.sections?.[0]?.content || 'Untitled newsletter';
@@ -451,8 +413,6 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
   };
 
   const addRevisionEntry = async (draft, source = 'manual') => {
-    if (!memberProfile?.uid) return;
-
     const normalizedDraft = JSON.parse(JSON.stringify(removeUndefined(draft)));
     const latestRevision = revisions[0];
     const latestSnapshot = latestRevision
@@ -501,10 +461,9 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
     }
 
     const revision = createRevisionEntry(draft, source);
-    const revisionRef = newsletterRevisionDocRef(CHURCH_SPACE, revision.id);
 
     try {
-      await setDoc(revisionRef, { ...revision, savedAt: revision.savedAt });
+      // In-session only on self-host (no Worker API backs a revision subcollection).
       setRevisions(prev => [revision, ...prev.filter(item => item.id !== revision.id)].slice(0, 8));
     } catch (error) {
       console.error('Error saving revision history:', error);
@@ -531,15 +490,13 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
     try {
       // Create archive ID using timestamp
       const archiveId = `archive_${Date.now()}`;
-      const archiveRef = newsletterArchiveDocRef(CHURCH_SPACE, archiveId);
 
-      // Save current newsletter to archive
+      // Save current newsletter to archive (in-session; no Worker API backs an archive store)
       const archivedNewsletter = {
         ...newsletter,
         archivedAt: new Date().toISOString(),
         archiveId: archiveId,
       };
-      await setDoc(archiveRef, archivedNewsletter);
 
       // Reset current newsletter to blank, but keep its identity (name/primary/status)
       const blankNewsletter = {
@@ -570,9 +527,8 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
         lastModified: new Date().toISOString(),
       };
 
-      const newsletterRef = newsletterDocRef(CHURCH_SPACE);
       const cleanedBlankNewsletter = removeUndefined(blankNewsletter);
-      await setDoc(newsletterRef, cleanedBlankNewsletter);
+      await apiNewsletterUpdate(newsletterId, { content: cleanedBlankNewsletter });
 
       setNewsletter(cleanedBlankNewsletter);
 
@@ -609,8 +565,7 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
         lastModified: new Date().toISOString(),
       }));
 
-      const newsletterRef = newsletterDocRef(CHURCH_SPACE);
-      await setDoc(newsletterRef, restoredNewsletter);
+      await apiNewsletterUpdate(newsletterId, { content: restoredNewsletter });
 
       setNewsletter(restoredNewsletter);
       setShowArchive(false);
@@ -628,9 +583,6 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
     }
 
     try {
-      const archiveRef = newsletterArchiveDocRef(CHURCH_SPACE, archiveId);
-      await deleteDoc(archiveRef);
-
       setArchivedNewsletters(prev => prev.filter(a => a.id !== archiveId));
       alert('Archived newsletter deleted.');
     } catch (error) {
@@ -671,8 +623,8 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
     return cleaned;
   };
 
-  // Upload image to Firebase Storage
-  const uploadImage = async (file, path) => {
+  // Upload image via the Worker file API (base64 body); returns a resolvable URL.
+  const uploadImage = async (file) => {
     return new Promise((resolve, reject) => {
       if (!file) {
         reject(new Error('No file provided'));
@@ -691,39 +643,30 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
         return;
       }
 
-      const storageRef = ref(storage, path);
-      const uploadTask = uploadBytesResumable(storageRef, file);
-
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setUploadProgress(progress);
-        },
-        (error) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Failed to read image file. Please try again.'));
+      reader.onload = async () => {
+        try {
+          const base64 = String(reader.result).replace(/^data:image\/[^;]+;base64,/, '');
+          const uploaded = await apiFileUpload(file.name, file.type, base64);
+          setUploadProgress(100);
+          resolve(uploaded?.id ? apiFileUrl(uploaded.id) : uploaded);
+        } catch (error) {
           console.error('Upload error:', error);
           let errorMessage = 'Failed to upload image. Please try again.';
 
-          if (error.code === 'storage/unauthorized') {
+          if (error?.message?.includes('storage/unauthorized') || error?.message?.includes('unauthorized')) {
             errorMessage = 'Upload failed: Please ensure you are logged in and have permission to upload images.';
-          } else if (error.code === 'storage/canceled') {
+          } else if (error?.message?.includes('canceled')) {
             errorMessage = 'Upload was canceled.';
-          } else if (error.message.includes('CORS')) {
-            errorMessage = 'CORS error: Please contact your administrator to configure Firebase Storage CORS settings.';
+          } else if (error?.message?.includes('CORS')) {
+            errorMessage = 'CORS error: Please contact your administrator to configure upload CORS settings.';
           }
 
           reject(new Error(errorMessage));
-        },
-        async () => {
-          try {
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            resolve(downloadURL);
-          } catch (error) {
-            console.error('Error getting download URL:', error);
-            reject(new Error('Upload completed but failed to get image URL. Please try again.'));
-          }
         }
-      );
+      };
+      reader.readAsDataURL(file);
     });
   };
 
@@ -1198,7 +1141,6 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
     setSaveStatus('saving');
 
     try {
-      const newsletterRef = newsletterDocRef(CHURCH_SPACE);
       const newsletterToSave = {
         ...newsletter,
         headerOpacity: newsletter.headerOpacity ?? 1,
@@ -1206,7 +1148,12 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
         lastModified: new Date().toISOString(),
       };
       const cleanedNewsletter = removeUndefined(newsletterToSave);
-      await setDoc(newsletterRef, cleanedNewsletter);
+      await apiNewsletterUpdate(newsletterId, {
+        content: cleanedNewsletter,
+        title: cleanedNewsletter.title,
+        name: cleanedNewsletter.name,
+        isPubliclyListed: cleanedNewsletter.isPubliclyListed,
+      });
       await addRevisionEntry(cleanedNewsletter, source);
       setLastSavedAt(new Date().toISOString());
       setSaveStatus('saved');
@@ -1225,7 +1172,7 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
   };
 
   useEffect(() => {
-    if (!memberProfile?.uid || loading || !autosaveEnabled) return;
+    if (loading || !autosaveEnabled) return;
 
     const timer = setTimeout(() => {
       if (newsletter.title || newsletter.subtitle || newsletter.sections.length > 0) {
@@ -1234,7 +1181,7 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
     }, 1800);
 
     return () => clearTimeout(timer);
-  }, [newsletter, memberProfile?.uid, loading, autosaveEnabled]);
+  }, [newsletter, loading, autosaveEnabled]);
 
   const [compareRevisionId, setCompareRevisionId] = useState(null);
 
@@ -1377,7 +1324,6 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
   };
 
   const saveCardToLibrary = async (section) => {
-    if (!memberProfile?.uid) return;
     const appearance = getCardAppearance(section);
     if (!appearance) return;
 
@@ -1405,7 +1351,7 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
     const updatedCards = [...savedCards, savedCard];
 
     try {
-      await setDoc(doc(db, 'spaces', CHURCH_SPACE, 'settings', 'newsletterCardLibrary'), { cards: updatedCards });
+      // In-session only on self-host (no Worker API backs the card library settings doc).
       setSavedCards(updatedCards);
       alert('Card appearance saved to your library.');
     } catch (error) {
@@ -1436,7 +1382,7 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
 
   const persistCustomPresets = async (presets) => {
     try {
-      await setDoc(doc(db, 'spaces', CHURCH_SPACE, 'settings', 'newsletterBrandPresets'), { presets });
+      // In-session only on self-host (no Worker API backs the brand-presets settings doc).
       setCustomPresets(presets);
     } catch (error) {
       console.error('Error saving brand presets:', error);
@@ -1584,16 +1530,8 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
       return;
     }
 
-    if (!memberProfile?.uid) {
-      alert('Your profile has not loaded. Please refresh the page.');
-      return;
-    }
-
     setSaving(true);
     try {
-      // Save ONLY to this newsletter's document
-      const memberNewsletterRef = newsletterDocRef(CHURCH_SPACE);
-
       // Ensure all fields have valid values (no undefined)
       const newsletterToSave = {
         ...newsletter,
@@ -1607,8 +1545,14 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
       // Remove any undefined values
       const cleanedNewsletter = removeUndefined(newsletterToSave);
 
-      // Save to this member's newsletter
-      await setDoc(memberNewsletterRef, cleanedNewsletter);
+      // Persist the editor document, then mark it published on the backend.
+      await apiNewsletterUpdate(newsletterId, {
+        content: cleanedNewsletter,
+        title: cleanedNewsletter.title,
+        name: cleanedNewsletter.name,
+        isPubliclyListed: cleanedNewsletter.isPubliclyListed,
+      });
+      await apiNewsletterAction(newsletterId, 'publish', {});
 
       setNewsletter(prev => ({ ...prev, published: true, viewCount: 0 }));
       const memberNewsletterUrl = buildPublicPath(CHURCH_SPACE);
@@ -1621,11 +1565,11 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
     }
   };
 
-  // Unpublish newsletter
+  // Unpublish newsletter. The Worker API has no 'unpublish' action, so we save the
+  // editor doc with published:false and reflect the draft state locally.
   const unpublishNewsletter = async () => {
     setSaving(true);
     try {
-      const newsletterRef = newsletterDocRef(CHURCH_SPACE);
       // Ensure all fields have valid values (no undefined)
       const newsletterToSave = {
         ...newsletter,
@@ -1636,7 +1580,12 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
       };
       // Remove any undefined values
       const cleanedNewsletter = removeUndefined(newsletterToSave);
-      await setDoc(newsletterRef, cleanedNewsletter);
+      await apiNewsletterUpdate(newsletterId, {
+        content: cleanedNewsletter,
+        title: cleanedNewsletter.title,
+        name: cleanedNewsletter.name,
+        isPubliclyListed: cleanedNewsletter.isPubliclyListed,
+      });
       setNewsletter(prev => ({ ...prev, published: false }));
       alert('Newsletter unpublished successfully!');
     } catch (error) {
@@ -1649,11 +1598,6 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
 
   // Copy shareable link to this newsletter
   const copyShareableLink = () => {
-    if (!memberProfile?.uid) {
-      alert('Your profile has not loaded. Please refresh the page.');
-      return;
-    }
-
     // Use this newsletter's shareable URL (primary uses the legacy 2-segment format)
     const shareableUrl = `${SITE_URL}${buildPublicPath(CHURCH_SPACE)}`;
 

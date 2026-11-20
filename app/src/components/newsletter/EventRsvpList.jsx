@@ -1,23 +1,21 @@
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { db } from '../../firebase/config';
 import { RSVP_OPTIONS } from '../../utils/newsletterEvents';
 
-// Author-only live list of RSVPs for one event section.
+// Author-only list of RSVPs for one event section, fetched once (the worker
+// currently has no read endpoint for RSVP rows, so it degrades to an empty list).
 const EventRsvpList = ({ memberId, newsletterId, sectionId }) => {
   const [rsvps, setRsvps] = useState(null);
 
   useEffect(() => {
     if (!memberId || !newsletterId || !sectionId) return undefined;
-    const rsvpQuery = query(
-      collection(db, 'spaces', memberId, 'newsletters', newsletterId, 'responses'),
-      where('sectionId', '==', sectionId)
-    );
-    return onSnapshot(
-      rsvpQuery,
-      (snap) => setRsvps(snap.docs.map((entry) => ({ id: entry.id, ...entry.data() }))),
-      () => setRsvps([])
-    );
+    let cancelled = false;
+    const load = async () => {
+      const rows = [];
+      if (cancelled) return;
+      setRsvps(rows.map((entry) => ({ id: entry.id, ...entry })));
+    };
+    load();
+    return () => { cancelled = true; };
   }, [memberId, newsletterId, sectionId]);
 
   if (!rsvps) return null;

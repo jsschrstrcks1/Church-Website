@@ -70,3 +70,30 @@ export const apiDeleteEvent = async (id) => (await request('DELETE', `/events/${
 export const apiLiveStatus = async () => (await request('GET', '/live/status', undefined, false)).data;
 export const apiSetLive = async (live) => (await request('POST', '/live/state', { live })).data;
 export const apiSaveDestinations = async (destinations) => (await request('POST', '/live/destinations', { destinations })).data;
+
+// ---- newsletters ----
+export const apiNewsletters = async (all = false) => (await request('GET', `/newsletters${all ? '?all=1' : ''}`)).data || [];
+export const apiNewsletterGet = async (id) => (await request('GET', `/newsletters/${id}`)).data;
+export const apiNewsletterCreate = async (body) => (await request('POST', '/newsletters', body)).data;
+export const apiNewsletterUpdate = async (id, body) => (await request('PUT', `/newsletters/${id}`, body)).data;
+export const apiNewsletterAction = async (id, action, body) => (await request('POST', `/newsletters/${id}/${action}`, body)).data;
+export const apiNewsletterDelete = async (id) => (await request('DELETE', `/newsletters/${id}`)).data;
+
+// ---- forms ----
+export const apiFormCreate = async (body) => (await request('POST', '/forms', body)).data;
+export const apiFormResponse = async (formId, payload, respondent) => (await request('POST', `/forms/${formId}/responses`, { payload, respondent }, false)).data;
+export const apiFormResponses = async (formId) => (await request('GET', `/forms/${formId}/responses`)).data || [];
+
+// ---- rsvp + polls ----
+export const apiRsvp = async (body) => (await request('POST', '/rsvps', body, false)).data;
+export const apiPollVote = async (pollId, optionText, voter) => (await request('POST', '/polls/vote', { pollId, optionText, voter }, false)).data;
+export const apiPollTallies = async (pollId) => (await request('GET', `/polls/${pollId}/votes`)).data || [];
+
+// ---- share ----
+export const apiShareSettings = async () => (await request('GET', '/share/settings', undefined, false)).data || {};
+export const apiSaveShareSettings = async (settings) => (await request('PUT', '/share/settings', settings)).data;
+
+// ---- files ----
+export const apiFileUpload = async (name, mime, data) => (await request('POST', '/files', { name, mime, data })).data;
+export const apiFileUrl = (id) => `${API_BASE}/files/${id}`;
+export const apiFileDelete = async (id) => (await request('DELETE', `/files/${id}`)).data;

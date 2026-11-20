@@ -2,10 +2,8 @@
 // The page (components/admin/LiveStudio.jsx) owns what is on screen; these panels show the
 // saved library and tell the page what to turn on or off.
 import { useEffect, useRef, useState } from 'react';
-import { collection, doc, setDoc } from 'firebase/firestore';
 import QRCode from 'qrcode';
-import { db } from '../../firebase/config';
-import { addAsset, addVideo, newId, removeAsset, removeVideo } from '../../utils/liveStudioLibrary';
+import { addAsset, addVideo, newId, removeAsset, removeVideo, saveDestination } from '../../utils/liveStudioLibrary';
 
 export const darkInput = 'w-full px-3 py-2 rounded-lg bg-white/10 border border-white/10 text-white placeholder-white/40 focus:ring-2 focus:ring-church-blue focus:border-transparent outline-none';
 const sectionTitle = 'text-sm font-semibold text-white/90';
@@ -124,17 +122,14 @@ const DestinationForm = ({ destination, uid, ytAuto, fbAuto, onClose }) => {
     if (isNew && !key && !automatic) { setError('Paste the stream key.'); return; }
     setSaving(true);
     try {
-      const ref = isNew ? doc(collection(db, 'liveStreamDestinations')) : doc(db, 'liveStreamDestinations', destination.id);
-      const now = new Date().toISOString();
-      if (key) await setDoc(doc(db, 'liveStreamKeys', ref.id), { key, updatedAt: now });
-      await setDoc(ref, {
-        name: name.slice(0, 60),
+      await saveDestination({
+        id: destination.id || '',
+        name,
         platform: draft.platform,
         serverUrl,
-        keyHint: key ? key.slice(-4) : destination.keyHint || '',
-        createdAt: destination.createdAt || now,
-        updatedAt: now,
-        updatedBy: uid || ''
+        key,
+        uid,
+        keyHint: destination.keyHint || ''
       });
       onClose();
     } catch (err) {

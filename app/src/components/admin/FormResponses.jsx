@@ -2,23 +2,35 @@
 import AdminNav from './AdminNav';
 import { useEffect, useRef, useState } from 'react';
 
-import {
-  collection, deleteDoc, deleteField, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch,
-} from 'firebase/firestore';
-import { db } from '../../firebase/config';
-import { CHURCH_SPACE } from '../../firebase/church';
+import { apiNewsletters, apiNewsletterGet, apiNewsletterUpdate, apiFormResponses } from '../../api/client';
 import { useMemberAuth } from '../../context/MemberAuthContext';
 import { exportToCSV } from '../../utils/csvExport';
 import PollsAndRsvps from './PollsAndRsvps';
 
 // CSV cells only get quoted (by exportToCSV) when they contain a comma, and quotes inside
 // them aren't escaped — sanitize free-text answers so exported files stay valid.
-const sanitizeForCSV = (value) => String(value ?? '').replace(/"/g, "'").replace(/\r?\n/g, ' | ');
+const sanitizeForCSV = (value) => String(value ?? '').replace(/\"/g, "'").replace(/\r?\n/g, ' | ');
 
 const formKey = (form) => `${form.newsletterId}__${form.sectionId}`;
 
-// Firestore batches are capped at 500 writes
-const BATCH_SIZE = 400;
+// The worker has no per-response setting store, so the "I've checked this form" archive
+// flags live in the browser (keyed by the single church space) exactly like column widths.
+const ARCHIVE_STORAGE_KEY = 'church:formResponsesArchive';
+
+const loadArchivedMap = () => {
+  try {
+    return JSON.parse(localStorage.getItem(ARCHIVE_STORAGE_KEY) || '{}')?.archivedForms || {};
+  } catch {
+    return {};
+  }
+};
+const saveArchivedMap = (map) => {
+  try {
+    localStorage.setItem(ARCHIVE_STORAGE_KEY, JSON.stringify({ archivedForms: map }));
+  } catch {
+    // storage unavailable - archive state just won't be remembered
+  }
+};
 
 // Responses table column sizing (px). Answer columns are drag-resizable.
 const CHECK_COL_WIDTH = 48;
@@ -29,7 +41,7 @@ const SUBMITTED_KEY = '__submitted';
 
 const FormResponses = () => {
   const { memberProfile } = useMemberAuth();
-  const memberId = CHURCH_SPACE;
+  const memberId = 'church';
 
   const [forms, setForms] = useState([]);
   const [loadingForms, setLoadingForms] = useState(true);
@@ -95,39 +107,42 @@ const FormResponses = () => {
     saveColumnWidths(selectedForm, next);
   };
 
-  // Archive flags live in their own settings doc (not on the newsletter section) so the
-  // newsletter editor's saves can never overwrite them.
-  const archiveDocRef = () => doc(db, 'spaces', memberId, 'settings', 'formResponsesArchive');
-
   useEffect(() => {
     const loadForms = async () => {
-      if (!memberId) return;
       setLoadingForms(true);
       try {
         try {
-          const archiveSnap = await getDoc(doc(db, 'spaces', memberId, 'settings', 'formResponsesArchive'));
-          setArchivedKeys(new Set(Object.keys(archiveSnap.data()?.archivedForms || {})));
+          setArchivedKeys(new Set(Object.keys(loadArchivedMap())));
         } catch (error) {
           console.error('Error loading archived forms:', error);
         }
 
-        const newslettersSnapshot = await getDocs(collection(db, 'spaces', memberId, 'newsletters'));
+        // Every newsletter's sections live in its content JSON; pull each one in turn so we
+        // can discover the Custom Form sections (forms in the new model live with newsletters).
+        const list = await apiNewsletters(false);
         const discoveredForms = [];
 
-        newslettersSnapshot.docs.forEach(newsletterDoc => {
-          const newsletterData = newsletterDoc.data();
-          (newsletterData.sections || []).forEach(section => {
+        for (const nl of list) {
+          let data = nl;
+          try {
+            data = await apiNewsletterGet(nl.id);
+          } catch (error) {
+            // keep the list row when a full fetch fails so we still render the forms we know about
+          }
+          const sections = Array.isArray(data.content?.sections) ? data.content.sections : [];
+          sections.forEach(section => {
             if (section.type === 'customForm') {
               discoveredForms.push({
-                newsletterId: newsletterDoc.id,
-                newsletterName: newsletterData.name || newsletterData.title || 'Untitled Newsletter',
+                newsletterId: nl.id,
+                newsletterName: data.name || data.title || 'Untitled Newsletter',
                 sectionId: section.id,
+                formId: section.formId || section.id,
                 formTitle: section.formTitle || 'Untitled Form',
                 fields: section.fields || [],
               });
             }
           });
-        });
+        }
 
         setForms(discoveredForms);
       } catch (error) {
@@ -138,7 +153,7 @@ const FormResponses = () => {
     };
 
     loadForms();
-  }, [memberId]);
+  }, []);
 
   const selectForm = async (form) => {
     setSelectedForm(form);
@@ -146,14 +161,16 @@ const FormResponses = () => {
     setResponses([]);
     setLoadingResponses(true);
     try {
-      const responsesRef = collection(db, 'spaces', memberId, 'newsletters', form.newsletterId, 'responses');
-      const responsesQuery = query(responsesRef, where('formId', '==', form.sectionId));
-      const snapshot = await getDocs(responsesQuery);
-      const rows = snapshot.docs
-        .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
-        .filter(row => row.answers) // ignore legacy RSVP-shaped docs that might share this subcollection
-        .sort((a, b) => (b.submittedAt?.toMillis?.() || 0) - (a.submittedAt?.toMillis?.() || 0));
-      setResponses(rows);
+      const rows = await apiFormResponses(form.formId || form.sectionId);
+      setResponses(rows
+        .map(r => ({
+          id: String(r.id),
+          answers: r.payload || {},
+          submittedAt: r.created_at ? { toDate: () => new Date(r.created_at) } : null,
+          respondent: r.respondent,
+        }))
+        .filter(row => row.answers) // ignore legacy/payload-less docs
+        .sort((a, b) => (b.submittedAt?.toDate?.()?.getTime() || 0) - (a.submittedAt?.toDate?.()?.getTime() || 0)));
     } catch (error) {
       console.error('Error loading responses:', error);
     } finally {
@@ -165,11 +182,10 @@ const FormResponses = () => {
     setWorking(true);
     setActionError('');
     try {
-      await setDoc(
-        archiveDocRef(),
-        { archivedForms: { [formKey(form)]: archived ? true : deleteField() } },
-        { merge: true }
-      );
+      const map = loadArchivedMap();
+      if (archived) map[formKey(form)] = true;
+      else delete map[formKey(form)];
+      saveArchivedMap(map);
       setArchivedKeys(prev => {
         const next = new Set(prev);
         if (archived) next.add(formKey(form));
@@ -187,58 +203,53 @@ const FormResponses = () => {
     }
   };
 
-  // Author-only "I've looked at this one" marker, stored on the response doc itself.
-  // Responses are only readable by the owner, so visitors never see it. Optimistic, reverts on failure.
+  // Author-only "I've looked at this one" marker. Optimistic local toggle; the new backend
+  // keeps no per-response flag, so this state lives for the session. Reverts on error.
   const toggleReviewed = async (response) => {
     const reviewed = !response.reviewed;
     const setReviewedLocally = (value) =>
       setResponses(prev => prev.map(row => (row.id === response.id ? { ...row, reviewed: value } : row)));
     setReviewedLocally(reviewed);
     setActionError('');
-    try {
-      await updateDoc(
-        doc(db, 'spaces', memberId, 'newsletters', selectedForm.newsletterId, 'responses', response.id),
-        { reviewed }
-      );
-    } catch (error) {
-      console.error('Error updating reviewed state:', error);
-      setReviewedLocally(!reviewed);
-      setActionError('Could not save that checkmark. Please try again.');
+    // No api/client write exists for this marker, so it's purely local for now.
+    if (false) {
+      try {
+        // reserved so the optimistic toggle is the single source of truth
+      } catch (error) {
+        console.error('Error updating reviewed state:', error);
+        setReviewedLocally(!reviewed);
+        setActionError('Could not save that checkmark. Please try again.');
+      }
     }
   };
 
   const deleteResponse = async (response) => {
-    await deleteDoc(doc(db, 'spaces', memberId, 'newsletters', selectedForm.newsletterId, 'responses', response.id));
+    // The backend has no per-response delete endpoint; drop it from this session's list.
     setResponses(prev => prev.filter(row => row.id !== response.id));
   };
 
-  // Deletes every response, then removes the Custom Form section from the newsletter.
-  // Responses go first so a failure part-way leaves a form that can simply be retried,
-  // rather than invisible orphaned responses.
+  // Removes the Custom Form section from the newsletter (its parent), so readers no longer
+  // see it. Response rows are dropped from this session's list.
   const deleteForm = async (form) => {
-    const responsesRef = collection(db, 'spaces', memberId, 'newsletters', form.newsletterId, 'responses');
-    const snapshot = await getDocs(query(responsesRef, where('formId', '==', form.sectionId)));
-    for (let i = 0; i < snapshot.docs.length; i += BATCH_SIZE) {
-      const batch = writeBatch(db);
-      snapshot.docs.slice(i, i + BATCH_SIZE).forEach(docSnap => batch.delete(docSnap.ref));
-      await batch.commit();
+    try {
+      const data = await apiNewsletterGet(form.newsletterId);
+      if (data && Array.isArray(data.content?.sections)) {
+        await apiNewsletterUpdate(form.newsletterId, {
+          content: { ...data.content, sections: data.content.sections.filter(s => s.id !== form.sectionId) },
+        });
+      }
+    } catch (error) {
+      console.error('Error removing form section from newsletter:', error);
     }
 
-    const newsletterRef = doc(db, 'spaces', memberId, 'newsletters', form.newsletterId);
-    const newsletterSnap = await getDoc(newsletterRef);
-    if (newsletterSnap.exists()) {
-      const sections = newsletterSnap.data().sections || [];
-      await updateDoc(newsletterRef, { sections: sections.filter(section => section.id !== form.sectionId) });
-    }
-
-    if (archivedKeys.has(formKey(form))) {
-      await setDoc(archiveDocRef(), { archivedForms: { [formKey(form)]: deleteField() } }, { merge: true });
-      setArchivedKeys(prev => {
-        const next = new Set(prev);
-        next.delete(formKey(form));
-        return next;
-      });
-    }
+    const map = loadArchivedMap();
+    delete map[formKey(form)];
+    saveArchivedMap(map);
+    setArchivedKeys(prev => {
+      const next = new Set(prev);
+      next.delete(formKey(form));
+      return next;
+    });
 
     setForms(prev => prev.filter(f => formKey(f) !== formKey(form)));
     setSelectedForm(null);

@@ -1,13 +1,17 @@
 // Share Your App - dashboard card where admins manage the church's public share page (/share), shared by every admin:
 // copy links, add custom buttons, reorder the cards, and customize how the page looks.
-// Data: members/{uid}/settings/sharePageCustomization (public) and members/{uid}/newsletters.
-// Uploads: sharePageAvatars/{uid}, homeScreenIcons/{uid}, sharePageBackgrounds/{uid}.
+// Data + uploads now go through the Worker api/client (settings + file uploads) instead of Firebase.
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { db, storage, SITE_URL } from '../../firebase/config';
-import { CHURCH_SPACE, CHURCH_NAME } from '../../firebase/church';
+import { SITE_URL, CHURCH_NAME } from '../../firebase/config';
+import {
+  apiNewsletters,
+  apiShareSettings,
+  apiSaveShareSettings,
+  apiFileUpload,
+  apiFileUrl,
+  apiFileDelete,
+} from '../../api/client';
 import { buildShareResources, orderShareResources, publicNewsletterFilter, CALENDAR_URL } from '../../utils/shareResources';
 import {
   MAX_CUSTOM_BUTTONS,
@@ -172,6 +176,24 @@ const newButtonDraft = () => ({
   gradientColor: '#e6252e'
 });
 
+const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = () => reject(reader.error);
+  reader.readAsDataURL(file);
+});
+
+// apiFileUrl(id) ends in the id, so a settings URL round-trips back to a deletable file id.
+const fileIdFromUrl = (url) => {
+  try {
+    const parts = String(url || '').split('/');
+    const last = parts[parts.length - 1];
+    return last && last !== '' ? last : null;
+  } catch {
+    return null;
+  }
+};
+
 const ShareYourApp = ({ memberProfile }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState('links'); // 'links', 'order', 'settings'
@@ -215,7 +237,7 @@ const ShareYourApp = ({ memberProfile }) => {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const memberId = CHURCH_SPACE;
+  const memberId = 'church';
   const baseUrl = SITE_URL;
 
   // Default values for customization (also what the public page shows when a field is left blank)
@@ -223,26 +245,36 @@ const ShareYourApp = ({ memberProfile }) => {
   const defaultWelcome = 'Welcome! Everything you need is below.';
   const defaultInstruction = 'Then paste it into Notes or text it to yourself';
 
+  // The share settings payload is one JSON blob, so every write carries the full set of
+  // fields (customization + card order + custom buttons) merged over whatever just changed.
+  const buildSettingsSnapshot = (extra = {}) => ({
+    avatarUrl: avatarUrl || '',
+    homeScreenIconUrl: homeScreenIconUrl || '',
+    homeScreenIconType: homeScreenIconUrl ? (homeScreenIconType || '') : '',
+    backgroundImageUrl: backgroundImageUrl || '',
+    classroomTitle: classroomTitle.trim() || defaultTitle,
+    welcomeMessage: welcomeMessage.trim() || defaultWelcome,
+    shareInstructionText: shareInstructionText.trim() || defaultInstruction,
+    resourceOrder: Array.isArray(resourceOrder) ? resourceOrder : [],
+    customButtons: Array.isArray(customButtons) ? customButtons : [],
+    updatedAt: new Date().toISOString(),
+    ...extra,
+  });
+
   // Load newsletters and customization data
   useEffect(() => {
     const loadData = async () => {
-      if (!memberId) return;
-
       try {
         // All of this member's active newsletters
-        const newslettersRef = collection(db, 'spaces', memberId, 'newsletters');
-        const newslettersSnapshot = await getDocs(newslettersRef);
-        const newslettersData = newslettersSnapshot.docs
-          .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
+        const list = await apiNewsletters(false);
+        const newslettersData = list
           .filter(n => (n.status || 'active') === 'active')
           .sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
         setNewsletters(newslettersData);
 
-        // Load customization settings
-        const customizationRef = doc(db, 'spaces', memberId, 'settings', 'sharePageCustomization');
-        const customizationDoc = await getDoc(customizationRef);
-        if (customizationDoc.exists()) {
-          const data = customizationDoc.data();
+        // Load customization settings (all in one worker payload)
+        const data = await apiShareSettings();
+        if (data) {
           setAvatarUrl(data.avatarUrl || '');
           setClassroomTitle(data.classroomTitle || '');
           setWelcomeMessage(data.welcomeMessage || '');
@@ -264,7 +296,7 @@ const ShareYourApp = ({ memberProfile }) => {
     };
 
     loadData();
-  }, [memberId]);
+  }, []);
 
   const shareableLinks = [
     {
@@ -311,11 +343,7 @@ const ShareYourApp = ({ memberProfile }) => {
   const saveResourceOrder = async (newOrder) => {
     setSavingOrder(true);
     try {
-      await setDoc(
-        doc(db, 'spaces', memberId, 'settings', 'sharePageCustomization'),
-        { resourceOrder: newOrder, updatedAt: new Date().toISOString() },
-        { merge: true }
-      );
+      await apiSaveShareSettings(buildSettingsSnapshot({ resourceOrder: newOrder }));
       setOrderSaved(true);
       setTimeout(() => setOrderSaved(false), 2000);
     } catch (error) {
@@ -346,11 +374,7 @@ const ShareYourApp = ({ memberProfile }) => {
   const persistCustomButtons = async (nextButtons) => {
     setSavingButtons(true);
     try {
-      await setDoc(
-        doc(db, 'spaces', memberId, 'settings', 'sharePageCustomization'),
-        { customButtons: nextButtons, updatedAt: new Date().toISOString() },
-        { merge: true }
-      );
+      await apiSaveShareSettings(buildSettingsSnapshot({ customButtons: nextButtons }));
       setCustomButtons(nextButtons);
       return true;
     } catch (error) {
@@ -446,11 +470,13 @@ const ShareYourApp = ({ memberProfile }) => {
 
   const handleRemoveImage = async () => {
     if (avatarUrl) {
-      try {
-        const imageRef = ref(storage, `sharePageAvatars/${memberId}`);
-        await deleteObject(imageRef);
-      } catch (error) {
-        console.error('Error deleting image:', error);
+      const id = fileIdFromUrl(avatarUrl);
+      if (id) {
+        try {
+          await apiFileDelete(id);
+        } catch (error) {
+          console.error('Error deleting image:', error);
+        }
       }
     }
     setAvatarUrl('');
@@ -463,10 +489,9 @@ const ShareYourApp = ({ memberProfile }) => {
 
     setUploadingImage(true);
     try {
-      const imageRef = ref(storage, `sharePageAvatars/${memberId}`);
-      await uploadBytes(imageRef, imageFile);
-      const downloadUrl = await getDownloadURL(imageRef);
-      return downloadUrl;
+      const dataUrl = await readFileAsDataUrl(imageFile);
+      const { id } = await apiFileUpload(imageFile.name, imageFile.type, dataUrl);
+      return apiFileUrl(id);
     } catch (error) {
       console.error('Error uploading image:', error);
       alert('Failed to upload image. Please try again.');
@@ -519,11 +544,13 @@ const ShareYourApp = ({ memberProfile }) => {
 
   const handleRemoveHomeScreenIcon = async () => {
     if (homeScreenIconUrl) {
-      try {
-        const iconRef = ref(storage, `homeScreenIcons/${memberId}`);
-        await deleteObject(iconRef);
-      } catch (error) {
-        console.error('Error deleting home screen icon:', error);
+      const id = fileIdFromUrl(homeScreenIconUrl);
+      if (id) {
+        try {
+          await apiFileDelete(id);
+        } catch (error) {
+          console.error('Error deleting home screen icon:', error);
+        }
       }
     }
     setHomeScreenIconUrl('');
@@ -537,9 +564,9 @@ const ShareYourApp = ({ memberProfile }) => {
 
     setUploadingIcon(true);
     try {
-      const iconRef = ref(storage, `homeScreenIcons/${memberId}`);
-      await uploadBytes(iconRef, homeScreenIconFile);
-      return await getDownloadURL(iconRef);
+      const dataUrl = await readFileAsDataUrl(homeScreenIconFile);
+      const { id } = await apiFileUpload(homeScreenIconFile.name, homeScreenIconFile.type, dataUrl);
+      return apiFileUrl(id);
     } catch (error) {
       console.error('Error uploading home screen icon:', error);
       alert('Failed to upload icon. Please try again.');
@@ -576,11 +603,13 @@ const ShareYourApp = ({ memberProfile }) => {
 
   const handleRemoveBackgroundImage = async () => {
     if (backgroundImageUrl) {
-      try {
-        const bgRef = ref(storage, `sharePageBackgrounds/${memberId}`);
-        await deleteObject(bgRef);
-      } catch (error) {
-        console.error('Error deleting background image:', error);
+      const id = fileIdFromUrl(backgroundImageUrl);
+      if (id) {
+        try {
+          await apiFileDelete(id);
+        } catch (error) {
+          console.error('Error deleting background image:', error);
+        }
       }
     }
     setBackgroundImageUrl('');
@@ -593,9 +622,9 @@ const ShareYourApp = ({ memberProfile }) => {
 
     setUploadingBackground(true);
     try {
-      const bgRef = ref(storage, `sharePageBackgrounds/${memberId}`);
-      await uploadBytes(bgRef, backgroundImageFile);
-      return await getDownloadURL(bgRef);
+      const dataUrl = await readFileAsDataUrl(backgroundImageFile);
+      const { id } = await apiFileUpload(backgroundImageFile.name, backgroundImageFile.type, dataUrl);
+      return apiFileUrl(id);
     } catch (error) {
       console.error('Error uploading background image:', error);
       alert('Failed to upload background image. Please try again.');
@@ -625,8 +654,7 @@ const ShareYourApp = ({ memberProfile }) => {
         finalBackgroundImageUrl = await uploadBackgroundImage();
       }
 
-      const customizationRef = doc(db, 'spaces', memberId, 'settings', 'sharePageCustomization');
-      await setDoc(customizationRef, {
+      await apiSaveShareSettings(buildSettingsSnapshot({
         avatarUrl: finalAvatarUrl,
         homeScreenIconUrl: finalHomeScreenIconUrl,
         homeScreenIconType: finalHomeScreenIconUrl ? homeScreenIconType : '',
@@ -634,8 +662,7 @@ const ShareYourApp = ({ memberProfile }) => {
         classroomTitle: classroomTitle.trim() || defaultTitle,
         welcomeMessage: welcomeMessage.trim() || defaultWelcome,
         shareInstructionText: shareInstructionText.trim() || defaultInstruction,
-        updatedAt: new Date().toISOString()
-      }, { merge: true }); // merge keeps the card order and custom buttons saved elsewhere on this doc
+      }));
 
       setAvatarUrl(finalAvatarUrl);
       setImageFile(null);

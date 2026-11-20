@@ -2,45 +2,14 @@
 import AdminNav from './AdminNav';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { collection, deleteDoc, doc, getDocs, setDoc } from 'firebase/firestore';
-import { db, SITE_URL, CHURCH_NAME, CHURCH_LOCATION } from '../../firebase/config';
-import { CHURCH_SPACE } from '../../firebase/church';
-import { useMemberAuth } from '../../context/MemberAuthContext';
+import { SITE_URL } from '../../firebase/config';
+import {
+  apiNewsletters, apiNewsletterCreate, apiNewsletterUpdate, apiNewsletterAction, apiNewsletterDelete
+} from '../../api/client';
 
 const generateNewsletterId = () => Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 
-const DEFAULT_NEWSLETTER_CONTENT = {
-  title: '',
-  subtitle: '',
-  sections: [],
-  headerBackgroundColor: '#10295e',
-  headerTextColor: '#ffffff',
-  contentBackgroundColor: '#ffffff',
-  textColor: '#000000',
-  accentColor: '#e6252e',
-  backgroundImage: '',
-  titleFont: 'Georgia, serif',
-  subtitleFont: 'Arial, sans-serif',
-  contentFont: 'Arial, sans-serif',
-  headerOpacity: 1,
-  contentOpacity: 1,
-  brandName: CHURCH_NAME,
-  brandTagline: CHURCH_LOCATION,
-  footerText: 'Thank you for being part of our church family.',
-  contactEmail: '',
-};
-
-const buildPublicUrl = (memberId, newsletter) => (
-  newsletter.isPrimary ? `/newsletter/${memberId}` : `/newsletter/${memberId}/${newsletter.id}`
-);
-
-const deleteAllDocsIn = async (collectionRef) => {
-  const snapshot = await getDocs(collectionRef);
-  await Promise.all(snapshot.docs.map((docSnap) => deleteDoc(docSnap.ref)));
-};
-
 const NewsletterManager = () => {
-  const { memberProfile } = useMemberAuth();
   const navigate = useNavigate();
 
   const [newsletters, setNewsletters] = useState([]);
@@ -52,15 +21,11 @@ const NewsletterManager = () => {
   const [copiedId, setCopiedId] = useState(null);
   const [busyId, setBusyId] = useState(null);
 
-  const memberId = CHURCH_SPACE;
-
   useEffect(() => {
     const loadNewsletters = async () => {
-      if (!memberId) return;
       setLoading(true);
       try {
-        const snapshot = await getDocs(collection(db, 'spaces', memberId, 'newsletters'));
-        const list = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+        const list = await apiNewsletters(false);
         list.sort((a, b) => {
           if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
           return new Date(b.lastModified || b.createdAt || 0) - new Date(a.lastModified || a.createdAt || 0);
@@ -74,39 +39,23 @@ const NewsletterManager = () => {
     };
 
     loadNewsletters();
-  }, [memberId]);
+  }, []);
 
   const activeNewsletters = newsletters.filter((n) => (n.status || 'active') === 'active');
   const archivedNewsletters = newsletters.filter((n) => n.status === 'archived');
 
   const createNewsletter = async () => {
-    if (!newNewsletterName.trim() || !memberId) return;
+    if (!newNewsletterName.trim()) return;
 
     setCreating(true);
     try {
-      // "primary" is a reserved id — it's only ever assigned by the one-time migration script
-      // to a pre-existing newsletter (so an already-shared link keeps working).
-      // Newsletters created here always get a fresh id, even if it's a member's very first one.
+      // Reserved picker id stays with the UI; the backend assigns the real uuid.
       const newId = generateNewsletterId();
-      const now = new Date().toISOString();
-
-      const newNewsletter = {
-        ...DEFAULT_NEWSLETTER_CONTENT,
-        name: newNewsletterName.trim(),
-        isPrimary: false,
-        // Listed on the church share page once published (uncheck "Show on the church share page" to hide it)
-        isPubliclyListed: true,
-        status: 'active',
-        published: false,
-        viewCount: 0,
-        createdAt: now,
-        lastModified: now,
-      };
-
-      await setDoc(doc(db, 'spaces', memberId, 'newsletters', newId), newNewsletter);
+      const result = await apiNewsletterCreate({ name: newNewsletterName.trim(), title: '' });
+      const id = result?.id || newId;
       setShowCreateModal(false);
       setNewNewsletterName('');
-      navigate(`/admin/newsletter/${newId}`);
+      navigate(`/admin/newsletter/${id}`);
     } catch (error) {
       console.error('Error creating newsletter:', error);
       alert('Failed to create newsletter. Please try again.');
@@ -116,28 +65,14 @@ const NewsletterManager = () => {
   };
 
   const duplicateNewsletter = async (newsletter) => {
-    if (!memberId) return;
     setBusyId(newsletter.id);
     try {
-      const newId = generateNewsletterId();
-      const now = new Date().toISOString();
-      // eslint-disable-next-line no-unused-vars
-      const { id, isPrimary, isPubliclyListed, status, createdAt, publishedDate, ...content } = newsletter;
-
-      const duplicated = {
-        ...content,
-        name: `${newsletter.name || 'Newsletter'} (Copy)`,
-        isPrimary: false,
-        isPubliclyListed: true,
-        status: 'active',
-        published: false,
-        viewCount: 0,
-        createdAt: now,
-        lastModified: now,
-      };
-
-      await setDoc(doc(db, 'spaces', memberId, 'newsletters', newId), duplicated);
-      setNewsletters((prev) => [{ id: newId, ...duplicated }, ...prev]);
+      const result = await apiNewsletterCreate({ name: `${newsletter.name || 'Newsletter'} (Copy)`, content: newsletter.content, theme: newsletter.theme });
+      const id = result?.id;
+      setNewsletters((prev) => {
+        const copy = { ...newsletter, id, name: `${newsletter.name || 'Newsletter'} (Copy)`, isPrimary: false, status: 'active', published: false, viewCount: 0, isPubliclyListed: true, lastModified: new Date().toISOString(), createdAt: new Date().toISOString() };
+        return [copy, ...prev];
+      });
     } catch (error) {
       console.error('Error duplicating newsletter:', error);
       alert('Failed to duplicate newsletter. Please try again.');
@@ -147,17 +82,12 @@ const NewsletterManager = () => {
   };
 
   const retireNewsletter = async (newsletter) => {
-    if (!memberId) return;
     if (!window.confirm(`Retire "${newsletter.name || 'this newsletter'}"? Its published link will go offline until you reactivate and republish it.`)) {
       return;
     }
     setBusyId(newsletter.id);
     try {
-      await setDoc(
-        doc(db, 'spaces', memberId, 'newsletters', newsletter.id),
-        { status: 'archived', published: false, lastModified: new Date().toISOString() },
-        { merge: true }
-      );
+      await apiNewsletterAction(newsletter.id, 'archive');
       setNewsletters((prev) => prev.map((n) => (n.id === newsletter.id ? { ...n, status: 'archived', published: false } : n)));
     } catch (error) {
       console.error('Error retiring newsletter:', error);
@@ -168,14 +98,9 @@ const NewsletterManager = () => {
   };
 
   const reactivateNewsletter = async (newsletter) => {
-    if (!memberId) return;
     setBusyId(newsletter.id);
     try {
-      await setDoc(
-        doc(db, 'spaces', memberId, 'newsletters', newsletter.id),
-        { status: 'active', lastModified: new Date().toISOString() },
-        { merge: true }
-      );
+      await apiNewsletterAction(newsletter.id, 'reactivate');
       setNewsletters((prev) => prev.map((n) => (n.id === newsletter.id ? { ...n, status: 'active' } : n)));
     } catch (error) {
       console.error('Error reactivating newsletter:', error);
@@ -186,17 +111,13 @@ const NewsletterManager = () => {
   };
 
   const deleteNewsletterEntirely = async (newsletter) => {
-    if (!memberId || newsletter.isPrimary) return;
+    if (newsletter.isPrimary) return;
     if (!window.confirm(`Permanently delete "${newsletter.name || 'this newsletter'}"? This cannot be undone — its content, archive, and history will all be removed.`)) {
       return;
     }
     setBusyId(newsletter.id);
     try {
-      const newsletterRef = doc(db, 'spaces', memberId, 'newsletters', newsletter.id);
-      await deleteAllDocsIn(collection(newsletterRef, 'archive'));
-      await deleteAllDocsIn(collection(newsletterRef, 'revisions'));
-      await deleteAllDocsIn(collection(newsletterRef, 'responses'));
-      await deleteDoc(newsletterRef);
+      await apiNewsletterDelete(newsletter.id);
       setNewsletters((prev) => prev.filter((n) => n.id !== newsletter.id));
     } catch (error) {
       console.error('Error deleting newsletter:', error);
@@ -207,15 +128,10 @@ const NewsletterManager = () => {
   };
 
   const toggleSharePageListing = async (newsletter) => {
-    if (!memberId) return;
     const nextValue = !newsletter.isPubliclyListed;
     setNewsletters((prev) => prev.map((n) => (n.id === newsletter.id ? { ...n, isPubliclyListed: nextValue } : n)));
     try {
-      await setDoc(
-        doc(db, 'spaces', memberId, 'newsletters', newsletter.id),
-        { isPubliclyListed: nextValue },
-        { merge: true }
-      );
+      await apiNewsletterAction(newsletter.id, 'toggle-list');
     } catch (error) {
       console.error('Error updating share page listing:', error);
       setNewsletters((prev) => prev.map((n) => (n.id === newsletter.id ? { ...n, isPubliclyListed: !nextValue } : n)));
@@ -224,7 +140,7 @@ const NewsletterManager = () => {
   };
 
   const copyLink = (newsletter) => {
-    const url = `${SITE_URL}${buildPublicUrl(memberId, newsletter)}`;
+    const url = `${SITE_URL}/newsletter${newsletter.isPrimary ? '' : `/${newsletter.id}`}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopiedId(newsletter.id);
       setTimeout(() => setCopiedId(null), 2000);

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { collection, doc, getDoc, getDocs, orderBy, query } from 'firebase/firestore';
-import { db, CHURCH_NAME } from '../../firebase/config';
+import { apiNewsletters } from '../../api/client';
+import { CHURCH_NAME } from '../../firebase/config';
 import { usePageMeta } from '../../hooks/usePageMeta';
 
 const NewsletterArchive = () => {
@@ -24,19 +24,17 @@ const NewsletterArchive = () => {
   useEffect(() => {
     const loadArchive = async () => {
       try {
-        const [authorSnapshot, currentSnapshot, archiveSnapshot] = await Promise.all([
-          getDoc(doc(db, 'publicMembers', memberId)),
-          getDoc(doc(db, 'spaces', memberId, 'newsletters', resolvedNewsletterId)),
-          getDocs(query(collection(db, 'spaces', memberId, 'newsletters', resolvedNewsletterId, 'archive'), orderBy('archivedAt', 'desc'))),
-        ]);
-
-        if (authorSnapshot.exists()) {
-          setAuthorName(authorSnapshot.data().name || '');
+        // Single 'church' space: the archive is every newsletter in the shared space.
+        // list them newest-first; published (current) ones float to the front.
+        const list = await apiNewsletters(true);
+        const items = [];
+        const published = list.filter((n) => n.published);
+        const archived = list.filter((n) => !n.published);
+        for (const row of published) {
+          items.unshift({ id: row.id, current: true, ...row });
         }
-
-        const items = archiveSnapshot.docs.map((snapshot) => ({ id: snapshot.id, archived: true, ...snapshot.data() }));
-        if (currentSnapshot.exists() && currentSnapshot.data().published) {
-          items.unshift({ id: 'current', current: true, ...currentSnapshot.data() });
+        for (const row of archived) {
+          items.push({ id: row.id, archived: true, ...row });
         }
         setNewsletters(items);
       } catch (loadError) {

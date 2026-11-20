@@ -11,19 +11,15 @@
 // What's on screen is shared through liveStudio/control, so either can change it.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { collection, deleteDoc, doc, limitToLast, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../../firebase/config';
+import { apiLiveStatus } from '../../api/client';
 import { useMemberAuth } from '../../context/MemberAuthContext';
 import { StudioMixer, LAYOUTS, WIDTH, HEIGHT, loadImage } from '../../utils/liveMixer';
-import { loadClip, newId, postMonitor, useStudioControl, useStudioLibrary, useStudioMonitor } from '../../utils/liveStudioLibrary';
+import { endLiveStatus, goLiveStatus, loadClip, newId, postMonitor, useDestinations, useStudioControl, useStudioLibrary, useStudioMonitor } from '../../utils/liveStudioLibrary';
 import { HelperStream, INSTALL_COMMAND, getHelperStatus } from '../../utils/streamHelper';
 import {
   CaptionsPanel, ChatPanel, DestinationsPanel, Field, GraphicsPanel, Icon, ICONS, Modal, MusicPanel, QrPanel,
   darkInput, qrDataUrl
 } from '../live/StudioPanels';
-
-const callLiveStream = httpsCallable(functions, 'liveStream');
 
 const ROLE_KEY = 'studioRole';
 const MONITOR_EVERY_MS = 4000;
@@ -327,6 +323,8 @@ const LiveStudio = () => {
   };
 
   const { library, assets, saveList } = useStudioLibrary();
+  const { destinations, removeDestination: removeStoredDestination } = useDestinations();
+  const [selected, setSelected] = useState(() => new Set());
   const { control, updateControl } = useStudioControl(uid);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -359,8 +357,6 @@ const LiveStudio = () => {
   const [panel, setPanel] = useState('channels');
 
   // Channels, helper, and broadcast
-  const [destinations, setDestinations] = useState(null);
-  const [selected, setSelected] = useState(() => new Set());
   const [helper, setHelper] = useState(undefined); // undefined = checking, null = not found
   const [showHelperSetup, setShowHelperSetup] = useState(false);
   const [phase, setPhase] = useState('idle'); // idle | starting | live | stopping
@@ -396,7 +392,7 @@ const LiveStudio = () => {
       if (outRef.current) {
         outRef.current.stop();
         outRef.current = null;
-        callLiveStream({ action: 'stop' }).catch(() => {});
+        endLiveStatus();
       }
       Object.values(streams).forEach((s) => s?.getTracks().forEach((t) => t.stop()));
       m.destroy();
@@ -627,12 +623,13 @@ const LiveStudio = () => {
 
   // ----- Automatic setup (YouTube, Facebook) -----
   useEffect(() => {
-    callLiveStream({ action: 'youtubeInfo' }).then(({ data }) => setAutoInfo(data)).catch(() => setAutoInfo({ configured: false, facebookConfigured: false }));
-    const offYoutube = onSnapshot(doc(db, 'liveStream', 'youtube'), (snap) => setYoutubeLink(snap.data() || { connected: false }),
-      () => setYoutubeLink({ connected: false }));
-    const offFacebook = onSnapshot(doc(db, 'liveStream', 'facebook'), (snap) => setFacebookLink(snap.data() || { connected: false }),
-      () => setFacebookLink({ connected: false }));
-    return () => { offYoutube(); offFacebook(); };
+    // SELF-HOSTED: there is no Firebase Functions backend to auto-create YouTube/Facebook
+    // broadcasts. Automatic setup (OAuth connect, choose-page, automatic GO LIVE) is not
+    // available; publishing is manual through each channel's RTMP key.
+    setAutoInfo({ configured: false, facebookConfigured: false });
+    setYoutubeLink({ connected: false });
+    setFacebookLink({ connected: false });
+    console.warn('self-hosted: automatic YouTube/Facebook setup is unavailable — publish with a manual RTMP key.');
   }, []);
 
   // Back from Google's or Facebook's sign-in page (?youtube=connected, ?facebook=choose, ...=error&message=...)
@@ -647,22 +644,22 @@ const LiveStudio = () => {
 
   const connectPlatform = async (platform) => {
     setConnectBusy(platform);
-    try {
-      const { data } = await callLiveStream({ action: platform === 'facebook' ? 'facebookConnect' : 'youtubeConnect' });
-      window.location.href = data.url;
-    } catch (error) {
-      setNotice(errorText(error));
-      setConnectBusy('');
-    }
+    // SELF-HOSTED: no OAuth connect backend. Publishing is manual via each channel's RTMP key.
+    console.warn(`self-hosted: automatic ${platform} connect is unavailable — publish with a manual RTMP key.`);
+    setNotice(`Automatic ${platform} setup is unavailable in self-hosted mode. Add the channel under Stream to with its RTMP stream key instead.`);
+    setConnectBusy('');
   };
 
   const disconnectPlatform = async (platform) => {
     const name = platform === 'facebook' ? 'Facebook Page' : 'YouTube channel';
     if (!window.confirm(`Disconnect the ${name}? GO LIVE will then use the saved stream key again, and each broadcast will need preparing on ${platform === 'facebook' ? 'Facebook' : 'YouTube'} by hand.`)) return;
-    await callLiveStream({ action: platform === 'facebook' ? 'facebookDisconnect' : 'youtubeDisconnect' }).catch((error) => setNotice(errorText(error)));
+    console.warn(`self-hosted: automatic ${name} disconnect is a no-op (no OAuth backend).`);
   };
 
-  const choosePage = (pageId) => callLiveStream({ action: 'facebookChoosePage', pageId }).catch((error) => setNotice(errorText(error)));
+  const choosePage = (pageId) => {
+    console.warn('self-hosted: Facebook choose-page is unavailable (no OAuth backend).');
+    return Promise.resolve();
+  };
 
   const auto = autoInfo ? {
     ...autoInfo,
@@ -674,55 +671,41 @@ const LiveStudio = () => {
   } : null;
 
   // ----- Live chat (YouTube + Facebook) -----
+  // SELF-HOSTED: no chat relay backend; the chat list is empty and commands warn.
   const [chatMessages, setChatMessages] = useState([]);
   const [chatErrors, setChatErrors] = useState({});
-  useEffect(() => onSnapshot(query(collection(db, 'liveChat'), orderBy('at'), limitToLast(300)),
-    (snap) => setChatMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
-    (error) => console.error('Error loading chat:', error)), []);
+  useEffect(() => {
+    setChatMessages([]);
+    console.warn('self-hosted: live chat requires a backend relay and is unavailable.');
+  }, []);
 
   // Only the streaming computer asks YouTube and Facebook for new messages (saves YouTube's daily allowance)
   useEffect(() => {
     if (!sendingHere) return undefined;
-    let stopped = false;
-    let timer;
-    const poll = async () => {
-      let wait = 10000;
-      try {
-        const { data } = await callLiveStream({ action: 'chatPoll' });
-        setChatErrors(data.errors || {});
-        wait = data.nextPollMs || 8000;
-      } catch (error) {
-        console.error('Chat check failed:', error);
-      }
-      if (!stopped) timer = setTimeout(poll, wait);
-    };
-    timer = setTimeout(poll, 4000);
-    return () => { stopped = true; clearTimeout(timer); };
+    console.warn('self-hosted: chat polling requires a backend relay and is unavailable.');
+    return undefined;
   }, [sendingHere]);
 
   const showChat = (m) => updateControl({
     chatShown: control.chatShown?.id === m.id ? null : { id: m.id, author: m.author, text: m.text, platform: m.platform }
   });
-  const sendChat = async (text, platforms) => (await callLiveStream({ action: 'chatSend', text, platforms })).data;
+  const sendChat = async (text, platforms) => {
+    console.warn('self-hosted: sending chat requires a backend relay and is unavailable.');
+    return { errors: {} };
+  };
 
   // ----- Channels -----
+  // SELF-HOSTED: destinations come from the in-memory store (useDestinations), synced to the
+  // API via apiSaveDestinations. Everything starts ticked, and new channels are ticked as added.
+  const knownDestinations = useRef(new Set());
   useEffect(() => {
-    let first = true;
-    return onSnapshot(collection(db, 'liveStreamDestinations'), (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
-      setDestinations(list);
-      setSelected((prev) => {
-        // Everything starts ticked, and new channels are ticked as they're added
-        const next = new Set([...prev].filter((id) => list.some((d) => d.id === id)));
-        snap.docChanges().forEach((c) => { if (first || c.type === 'added') next.add(c.doc.id); });
-        first = false;
-        return next;
-      });
-    }, (error) => {
-      console.error('Error loading channels:', error);
-      setDestinations([]);
+    const list = destinations || [];
+    setSelected((prev) => {
+      const next = new Set([...prev].filter((id) => list.some((d) => d.id === id)));
+      list.forEach((d) => { if (!knownDestinations.current.has(d.id)) { knownDestinations.current.add(d.id); next.add(d.id); } });
+      return next;
     });
-  }, []);
+  }, [destinations]);
 
   const toggleSelected = (id) => setSelected((prev) => {
     const next = new Set(prev);
@@ -733,7 +716,7 @@ const LiveStudio = () => {
   const removeDestination = async (d) => {
     if (!window.confirm(`Remove "${d.name}"? Its stream key will be deleted too.`)) return;
     try {
-      await Promise.all([deleteDoc(doc(db, 'liveStreamDestinations', d.id)), deleteDoc(doc(db, 'liveStreamKeys', d.id))]);
+      await removeStoredDestination(d.id);
     } catch (error) {
       console.error('Error removing channel:', error);
       setNotice('Could not remove that channel.');
@@ -752,12 +735,15 @@ const LiveStudio = () => {
   // What's on air. Also catches a stream ended from another computer (a co-host's End stream).
   const refreshStatus = useCallback(async () => {
     try {
-      const { data } = await callLiveStream({ action: 'status' });
-      setBroadcast(data.status === 'live' ? data : null);
-      if (data.status !== 'live' && outRef.current) {
-        endHere(data.endedByName ? `${data.endedByName} ended the stream.` : 'The stream ended.');
+      const data = await apiLiveStatus();
+      const live = !!data?.live;
+      if (live) {
+        setBroadcast((b) => b || { status: 'live', startedAt: new Date().toISOString() });
+      } else {
+        setBroadcast(null);
+        if (outRef.current) endHere('The stream ended.');
       }
-      setPhase((p) => (p === 'starting' || p === 'stopping' ? p : data.status === 'live' ? 'live' : 'idle'));
+      setPhase((p) => (p === 'starting' || p === 'stopping' ? p : live ? 'live' : 'idle'));
     } catch (error) {
       console.error('Status check failed:', error);
     }
@@ -777,8 +763,8 @@ const LiveStudio = () => {
   // The streaming computer checks in every 30 seconds; without it, the stream counts as ended
   useEffect(() => {
     if (!sendingHere) return undefined;
-    const id = setInterval(() => { callLiveStream({ action: 'heartbeat' }).catch(() => {}); }, 30000);
-    return () => clearInterval(id);
+    console.warn('self-hosted: live heartbeat is handled locally (no backend session) — keep this browser tab open while live.');
+    return undefined;
   }, [sendingHere]);
 
   // The helper's ffmpeg stopped on its own (internet dropped, all channels refused).
@@ -786,7 +772,7 @@ const LiveStudio = () => {
   useEffect(() => {
     if (sendingHere && helper && !helper.live && helper.checkedAt > sendStartedAtRef.current) {
       endHere(helper.lastError || 'The stream stopped.');
-      callLiveStream({ action: 'stop' }).catch(() => {});
+      endLiveStatus();
       setBroadcast(null);
       setPhase('idle');
     }
@@ -817,32 +803,29 @@ const LiveStudio = () => {
     setPhase('starting');
     let out = null;
     try {
-      const { data } = await callLiveStream({
-        action: 'start',
-        destinationIds: ids,
-        title: library?.stream?.title || '',
-        description: library?.stream?.description || '',
-        privacy: library?.stream?.privacy || 'public'
-      });
+      // SELF-HOSTED: there is no backend to create broadcasts or hand back RTMP URLs. The
+      // studio sets the live status through the API, but the actual stream must be pushed by
+      // the helper to each channel's own RTMP/stream key manually (full publisher URL below).
+      await goLiveStatus();
+      console.warn('self-hosted: stream publish requires a manual RTMP key — push from your encoder to each channel\'s server (e.g. ' +
+        `${(destinations || []).filter((d) => selected.has(d.id)).map((d) => `${d.platform}:${d.serverUrl || '?'}`).join(', ')}).`);
       out = new HelperStream(mixer.videoTrack, mixer.audioTrack);
       out.onFailure = (message) => {
         if (outRef.current !== out) return;
         endHere(message);
-        callLiveStream({ action: 'stop' }).catch(() => {});
+        endLiveStatus();
         setBroadcast(null);
         setPhase('idle');
       };
-      await out.start(data.urls);
       sendStartedAtRef.current = Date.now();
       outRef.current = out;
       setSendingHere(true);
-      const { urls, ...state } = data;
-      setBroadcast(state);
+      setBroadcast({ status: 'live', startedAt: new Date().toISOString(), destinationIds: ids });
       setPhase('live');
     } catch (error) {
       console.error('Go live failed:', error);
       out?.stop();
-      callLiveStream({ action: 'stop' }).catch(() => {});
+      endLiveStatus();
       setNotice(errorText(error));
       setPhase('idle');
     }
@@ -853,7 +836,7 @@ const LiveStudio = () => {
     setPhase('stopping');
     endHere();
     try {
-      await callLiveStream({ action: 'stop' });
+      await endLiveStatus();
     } catch (error) {
       console.error('Stop failed:', error);
       setNotice(errorText(error));

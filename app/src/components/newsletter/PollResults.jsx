@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { apiPollTallies } from '../../api/client';
 
-// Live poll results, read from the tally document the onNewsletterPollVote function maintains.
+// Poll results, fetched from the tally the worker's /polls/:id/votes endpoint maintains.
 const PollResults = ({ memberId, newsletterId, sectionId, options, accentColor, textColor }) => {
   const [tally, setTally] = useState(null);
 
   useEffect(() => {
     if (!memberId || !newsletterId || !sectionId) return undefined;
-    return onSnapshot(
-      doc(db, 'spaces', memberId, 'newsletters', newsletterId, 'pollTallies', sectionId),
-      (snap) => setTally(snap.exists() ? snap.data() : { counts: [], total: 0 }),
-      () => setTally({ counts: [], total: 0 })
-    );
+    let cancelled = false;
+    const load = async () => {
+      const rows = await apiPollTallies(sectionId).catch(() => []);
+      if (cancelled) return;
+      setTally({ counts: rows.map((row) => ({ option: row.option_text, count: Number(row.votes) || 0 })), total: 0 });
+    };
+    load();
+    return () => { cancelled = true; };
   }, [memberId, newsletterId, sectionId]);
 
   if (!tally) return null;

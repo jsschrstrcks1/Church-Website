@@ -301,48 +301,72 @@ export default {
 
       // ================= Content: newsletters =================
       if (path === '/newsletters' && request.method === 'GET') {
-        const rows = await db.prepare("SELECT id,title,status,created_at,updated_at,published_at FROM newsletters WHERE status != 'archived' OR status = 'published' ORDER BY created_at DESC").all();
+        // Only non-archived (list) — the UI separates retired ones; pass ?all=1 for those.
+        const clause = url.searchParams.get('all') === '1' ? '' : "WHERE status = 'active'";
+        const rows = await db.prepare(`SELECT id,name,title,status,published,is_primary AS isPrimary,is_publicly_listed AS isPubliclyListed,view_count AS viewCount,created_at,last_modified FROM newsletters ${clause} ORDER BY is_primary DESC, last_modified DESC`).all();
         return cors(json(rows.results));
       }
       if (path === '/newsletters' && request.method === 'POST') {
         const id = crypto.randomUUID();
         const now = new Date().toISOString();
-        await db.prepare('INSERT INTO newsletters (id,title,status,content,theme,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)')
-          .bind(id, (body.title || 'Untitled').trim(), body.status === 'published' ? 'published' : 'draft', JSON.stringify(body.content || {}), JSON.stringify(body.theme || {}), member.id, now, now).run();
+        await db.prepare(`INSERT INTO newsletters (id,name,title,status,published,is_publicly_listed,view_count,content,theme,created_by,created_at,last_modified)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+          .bind(id, (body.name || body.title || 'Untitled').trim(), body.title || '', 'active', 0, 1, 0,
+            JSON.stringify(body.content || {}), JSON.stringify(body.theme || {}), member.id, now, now).run();
         return cors(json({ id }));
       }
       const nlMatch = path.match(/^\/newsletters\/([\w-]+)$/);
       if (nlMatch && request.method === 'GET') {
         const row = await db.prepare('SELECT * FROM newsletters WHERE id = ?').bind(nlMatch[1]).first();
         if (!row) return cors(json({ error: 'not-found' }, 404));
-        return cors(json({ ...row, content: JSON.parse(row.content || '{}'), theme: JSON.parse(row.theme || '{}') }));
+        return cors(json(mapNewsletter(row)));
       }
       if (nlMatch && request.method === 'PUT') {
         const now = new Date().toISOString();
+        if (body.content !== undefined) { const c = JSON.stringify(restoreNewsletterContent(body)); await db.prepare('UPDATE newsletters SET content = ? WHERE id = ?').bind(c, nlMatch[1]).run(); await db.prepare('INSERT INTO newsletter_revisions (newsletter_id, content, saved_at, saved_by) VALUES (?,?,?,?)').bind(nlMatch[1], c, now, member.id).run(); }
+        if (body.name !== undefined) await db.prepare('UPDATE newsletters SET name = ? WHERE id = ?').bind((body.name || '').trim(), nlMatch[1]).run();
         if (body.title !== undefined) await db.prepare('UPDATE newsletters SET title = ? WHERE id = ?').bind((body.title || '').trim(), nlMatch[1]).run();
-        if (body.content !== undefined) { await db.prepare('UPDATE newsletters SET content = ? WHERE id = ?').bind(JSON.stringify(body.content), nlMatch[1]).run(); await db.prepare('INSERT INTO newsletter_revisions (newsletter_id, content, saved_at, saved_by) VALUES (?,?,?,?)').bind(nlMatch[1], JSON.stringify(body.content), now, member.id).run(); }
-        if (body.theme !== undefined) await db.prepare('UPDATE newsletters SET theme = ? WHERE id = ?').bind(JSON.stringify(body.theme), nlMatch[1]).run();
-        if (body.status === 'published') await db.prepare('UPDATE newsletters SET status = ?, published_at = ? WHERE id = ?').bind('published', now, nlMatch[1]).run();
-        await db.prepare('UPDATE newsletters SET updated_at = ? WHERE id = ?').bind(now, nlMatch[1]).run();
+        if (body.isPubliclyListed !== undefined) await db.prepare('UPDATE newsletters SET is_publicly_listed = ? WHERE id = ?').bind(body.isPubliclyListed ? 1 : 0, nlMatch[1]).run();
+        await db.prepare('UPDATE newsletters SET last_modified = ? WHERE id = ?').bind(now, nlMatch[1]).run();
         return cors(json({ ok: true }));
       }
       if (nlMatch && request.method === 'DELETE') {
-        await db.prepare('DELETE FROM newsletters WHERE id = ?').bind(nlMatch[1]).run();
+        // Delete dependents before the parent (FK constraint).
+        const forms = await db.prepare('SELECT id FROM forms WHERE newsletter_id = ?').bind(nlMatch[1]).all();
+        for (const f of forms.results) {
+          await db.prepare('DELETE FROM form_responses WHERE form_id = ?').bind(f.id).run();
+          await db.prepare('DELETE FROM poll_votes WHERE poll_id = ?').bind(f.id).run();
+        }
+        await db.prepare('DELETE FROM forms WHERE newsletter_id = ?').bind(nlMatch[1]).run();
+        await db.prepare('DELETE FROM events_rsvps WHERE newsletter_id = ?').bind(nlMatch[1]).run();
         await db.prepare('DELETE FROM newsletter_revisions WHERE newsletter_id = ?').bind(nlMatch[1]).run();
+        await db.prepare('DELETE FROM newsletter_public WHERE newsletter_id = ?').bind(nlMatch[1]).run();
+        await db.prepare('DELETE FROM newsletters WHERE id = ?').bind(nlMatch[1]).run();
         return cors(json({ ok: true }));
       }
-      if (nlMatch && path.endsWith('/publish') && request.method === 'POST') {
-        const row = await db.prepare('SELECT * FROM newsletters WHERE id = ?').bind(nlMatch[1]).first();
-        if (!row) return cors(json({ error: 'not-found' }, 404));
+      // archive/reactivate (status) + publish + toggle — /newsletters/:id/action
+      const nlAct = path.match(/^\/newsletters\/([\w-]+)\/(archive|reactivate|publish|toggle-list)$/);
+      if (nlAct && request.method === 'POST') {
+        const [, id, action] = nlAct;
         const now = new Date().toISOString();
-        const slug = (body.slug || row.title || 'newsletter').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
-        // Render HTML from editor content: scan for text/heading blocks (simple)
-        let html = renderNewsletterHtml(row.content);
-        await db.prepare(`INSERT INTO newsletter_public (newsletter_id, slug, title, content_html, published_at) VALUES (?,?,?,?,?)
-          ON CONFLICT(newsletter_id) DO UPDATE SET slug=excluded.slug, title=excluded.title, content_html=excluded.content_html, published_at=excluded.published_at`)
-          .bind(row.id, slug || `nl-${row.id.slice(0, 8)}`, row.title, html, now).run();
-        await db.prepare('UPDATE newsletters SET status = ?, published_at = ? WHERE id = ?').bind('published', now, row.id).run();
-        return cors(json({ ok: true, slug }));
+        if (action === 'archive') await db.prepare("UPDATE newsletters SET status='archived', published=0, last_modified=? WHERE id=?").bind(now, id).run();
+        else if (action === 'reactivate') await db.prepare("UPDATE newsletters SET status='active', last_modified=? WHERE id=?").bind(now, id).run();
+        else if (action === 'publish') {
+          const row = await db.prepare('SELECT * FROM newsletters WHERE id = ?').bind(id).first();
+          if (!row) return cors(json({ error: 'not-found' }, 404));
+          const slug = (body.slug || row.title || row.name || 'newsletter').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+          const html = renderNewsletterHtml(row.content);
+          await db.prepare(`INSERT INTO newsletter_public (newsletter_id, slug, title, content_html, published_at) VALUES (?,?,?,?,?)
+            ON CONFLICT(newsletter_id) DO UPDATE SET slug=excluded.slug, title=excluded.title, content_html=excluded.content_html, published_at=excluded.published_at`)
+            .bind(id, slug || `nl-${id.slice(0, 8)}`, row.title || row.name, html, now).run();
+          await db.prepare("UPDATE newsletters SET published=1, published_at=?, last_modified=? WHERE id=?").bind(now, now, id).run();
+          return cors(json({ ok: true, slug }));
+        }
+        else if (action === 'toggle-list') {
+          const row = await db.prepare('SELECT is_publicly_listed FROM newsletters WHERE id = ?').bind(id).first();
+          await db.prepare('UPDATE newsletters SET is_publicly_listed = ?, last_modified = ? WHERE id = ?').bind(row?.is_publicly_listed ? 0 : 1, now, id).run();
+        }
+        return cors(json({ ok: true }));
       }
 
       // ================= Content: forms / responses =================
@@ -448,6 +472,29 @@ function renderNewsletterHtml(content) {
     else out += `<p style="margin:.35em 0">${inner}</p>\n`;
   }
   return out;
+}
+
+// Row (snake_case) -> camelCase object matching what the UI expects.
+function mapNewsletter(row) {
+  if (!row) return row;
+  const { status, published, is_primary, is_publicly_listed, view_count, last_modified, ...rest } = row;
+  return {
+    ...rest,
+    status,
+    published: !!published,
+    isPrimary: !!is_primary,
+    isPubliclyListed: !!is_publicly_listed,
+    viewCount: view_count,
+    lastModified: last_modified,
+    content: (() => { try { return row.content === undefined ? undefined : JSON.parse(row.content || '{}'); } catch { return {}; } })(),
+    theme: (() => { try { return JSON.parse(row.theme || '{}'); } catch { return {}; } })()
+  };
+}
+
+// The UI sends the whole newsletter as `content`; the editor stores named fields directly.
+// Flatten the DEFAULT_NEWSLETTER_CONTENT shape (title/subtitle/sections/colors/...) into content JSON.
+function restoreNewsletterContent(body) {
+  return body.content;
 }
 
 function validEvent(b) {

@@ -110,14 +110,20 @@ INSERT OR IGNORE INTO public_live (id, live) VALUES (1, 0);
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS newsletters (
-  id         TEXT PRIMARY KEY,                -- uuid
-  title      TEXT NOT NULL,
-  status     TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published','archived')),
-  content    TEXT NOT NULL DEFAULT '{}',      -- editor JSON
+  id         TEXT PRIMARY KEY,                -- uuid (or reserved 'primary')
+  name       TEXT NOT NULL DEFAULT '',
+  title      TEXT NOT NULL DEFAULT '',
+  status     TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
+  published  INTEGER NOT NULL DEFAULT 0 CHECK (published IN (0,1)),
+  is_primary INTEGER NOT NULL DEFAULT 0 CHECK (is_primary IN (0,1)),
+  is_publicly_listed INTEGER NOT NULL DEFAULT 1 CHECK (is_publicly_listed IN (0,1)),
+  view_count INTEGER NOT NULL DEFAULT 0,
+  content    TEXT NOT NULL DEFAULT '{}',      -- editor JSON (DEFAULT_NEWSLETTER_CONTENT shape)
   theme      TEXT NOT NULL DEFAULT '{}',      -- background/color/typography JSON
   created_by TEXT REFERENCES members(id),
   created_at TEXT NOT NULL,
   updated_at TEXT,
+  last_modified TEXT,
   published_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_news_status ON newsletters(status);

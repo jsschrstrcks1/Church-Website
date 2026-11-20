@@ -4,16 +4,14 @@
 //   - Cards: spaces/church/newsletters (published ones listed on the share page)
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
-import { db, CHURCH_NAME, CHURCH_LOCATION } from '../../firebase/config';
-import { CHURCH_SPACE } from '../../firebase/church';
+import { CHURCH_NAME, CHURCH_LOCATION } from '../../firebase/config';
+import { apiNewsletters, apiShareSettings } from '../../api/client';
 import { buildShareResources, orderShareResources, publicNewsletterFilter } from '../../utils/shareResources';
 import { usePageMeta, DEFAULT_ICON } from '../../hooks/usePageMeta';
 import CustomLinkButton from '../shared/CustomLinkButton';
 
 const SharePage = () => {
-  // Always the church's page. (Older links like /share/<account id> are redirected to /share in App.jsx.)
-  const memberId = CHURCH_SPACE;
+  // A single shared church page (no per-account spaces on the self-hosted backend).
   const [newsletters, setNewsletters] = useState([]);
   const [customization, setCustomization] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -45,19 +43,13 @@ const SharePage = () => {
     const load = async () => {
       try {
         // Independent reads, so run them together
-        const [newslettersSnapshot, customizationDoc] = await Promise.all([
-          getDocs(collection(db, 'spaces', memberId, 'newsletters')),
-          getDoc(doc(db, 'spaces', memberId, 'settings', 'sharePageCustomization'))
+        const [allNl, settings] = await Promise.all([
+          apiNewsletters(false),
+          apiShareSettings()
         ]);
 
-        setNewsletters(
-          newslettersSnapshot.docs
-            .map((d) => ({ id: d.id, ...d.data() }))
-            .filter(publicNewsletterFilter)
-            .sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0))
-        );
-
-        if (customizationDoc.exists()) setCustomization(customizationDoc.data());
+        setNewsletters(allNl.filter(publicNewsletterFilter).sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0)));
+        if (settings && Object.keys(settings).length) setCustomization(settings);
       } catch (err) {
         console.error('Error loading share page:', err);
         setError('Something went wrong loading this page. Please try again.');
@@ -67,7 +59,7 @@ const SharePage = () => {
     };
 
     load();
-  }, [memberId]);
+  }, []);
 
   if (loading) {
     return (
@@ -95,7 +87,7 @@ const SharePage = () => {
   }
 
   const resources = orderShareResources(
-    buildShareResources({ memberId, newsletters }),
+    buildShareResources({ newsletters }),
     customization?.resourceOrder
   );
   const hasBackground = !!customization?.backgroundImageUrl;

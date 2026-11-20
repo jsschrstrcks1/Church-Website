@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { apiRsvp } from '../../api/client';
 import {
   RSVP_OPTIONS,
   downloadEventIcs,
@@ -34,12 +33,11 @@ const EventCard = ({ section, memberId, newsletterId, preview = false, accentCol
     setError('');
     setSubmitting(true);
     try {
-      await addDoc(collection(db, 'spaces', memberId, 'newsletters', newsletterId, 'responses'), {
-        sectionId: section.id,
-        option,
-        name: name.trim().slice(0, 100),
+      await apiRsvp({
+        eventId: section.id,
+        newsletterId,
+        guestName: name.trim().slice(0, 100),
         guests: option === 'Not going' ? 0 : Math.min(Math.max(parseInt(guests, 10) || 1, 1), 20),
-        submittedAt: serverTimestamp(),
       });
       setConfirmed(option);
     } catch (submitError) {

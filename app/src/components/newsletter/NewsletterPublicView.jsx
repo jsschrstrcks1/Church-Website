@@ -1,9 +1,8 @@
 // Newsletter Public View Component
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc, increment } from 'firebase/firestore';
-import { db, functions, SITE_URL, CHURCH_NAME } from '../../firebase/config';
-import { httpsCallable } from 'firebase/functions';
+import { apiNewsletterGet, apiPollVote, apiFormResponse } from '../../api/client';
+import { SITE_URL, CHURCH_NAME } from '../../firebase/config';
 import { Link } from 'react-router-dom';
 import { usePageMeta } from '../../hooks/usePageMeta';
 import NewsletterFooter from './NewsletterFooter';
@@ -478,11 +477,7 @@ const NewsletterPublicView = () => {
 
     setSubmittingResponseId(section.id);
     try {
-      await addDoc(collection(db, 'spaces', memberId, 'newsletters', resolvedNewsletterId, 'responses'), {
-        sectionId: section.id,
-        option,
-        submittedAt: serverTimestamp(),
-      });
+      await apiPollVote(section.id, option);
       localStorage.setItem(responseKey, option);
       setSubmittedResponses(prev => ({ ...prev, [section.id]: option }));
     } catch (responseError) {
@@ -516,11 +511,7 @@ const NewsletterPublicView = () => {
 
     setSubmittingFormId(section.id);
     try {
-      await addDoc(collection(db, 'spaces', memberId, 'newsletters', resolvedNewsletterId, 'responses'), {
-        formId: section.id,
-        answers,
-        submittedAt: serverTimestamp(),
-      });
+      await apiFormResponse(section.id, { answers });
       setSubmittedForms(prev => ({ ...prev, [section.id]: true }));
     } catch (formError) {
       console.error('Error submitting form:', formError);
@@ -533,68 +524,33 @@ const NewsletterPublicView = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        let newsletterRef;
-
-        if (archiveId && memberId) {
-          // Load archived issue of this newsletter
-          newsletterRef = doc(db, 'spaces', memberId, 'newsletters', resolvedNewsletterId, 'archive', archiveId);
-          setIsArchived(true);
-        } else if (memberId) {
-          // Load this member's newsletter (primary if no newsletterId in the URL)
-          newsletterRef = doc(db, 'spaces', memberId, 'newsletters', resolvedNewsletterId);
-          setIsArchived(false);
-        } else {
-          setError('No newsletter available at this time.');
-          return;
+        // Single 'church' space: newsletters are fetched by id. The "archive" is a
+        // previously published (now status='archived') issue, also keyed by id.
+        let targetId = archiveId || newsletterId;
+        if (!targetId) {
+          // No id in the URL: resolve the primary (default) newsletter.
+          const list = await apiNewsletters();
+          const primary = list.find((n) => n.isPrimary) || list.find((n) => n.published) || list[0];
+          targetId = primary?.id;
         }
+        if (!targetId) { setError('No newsletter available at this time.'); return; }
+        const data = await apiNewsletterGet(targetId);
+        setIsArchived(Boolean(archiveId));
 
-        const newsletterDoc = await getDoc(newsletterRef);
-
-
-        if (newsletterDoc.exists()) {
-          const data = newsletterDoc.data();
-
-          // For archived newsletters, always show (they were published when archived)
-          // For current newsletters, only show if published
+        if (data) {
+          // Archived newsletters always show; current ones only when published.
           if (archiveId || data.published) {
             // A newsletter saved without sections still shows (as an empty page) instead of crashing
             setNewsletter({ ...data, sections: Array.isArray(data.sections) ? data.sections : [] });
-            // Metadata is now handled by usePageMeta hook
-
-            // Increment view count (fire and forget - don't block on this)
-            try {
-              await updateDoc(newsletterRef, {
-                viewCount: increment(1)
-              });
-            } catch (viewErr) {
-              // Silently fail - view tracking is not critical
-              console.log('Could not update view count:', viewErr.message);
-            }
           } else {
             setError('This newsletter has not been published yet.');
           }
         } else {
           setError(archiveId ? 'This archived newsletter could not be found.' : 'No newsletter available at this time.');
         }
-
       } catch (err) {
         console.error('Error loading newsletter data:', err);
-        console.error('Error details:', {
-          message: err.message,
-          code: err.code,
-          name: err.name
-        });
-        
-        // Provide more specific error messages
-        if (err.code === 'permission-denied') {
-          setError('Access denied. Please check your permissions.');
-        } else if (err.code === 'unavailable') {
-          setError('Service temporarily unavailable. Please check your internet connection and try again.');
-        } else if (err.code === 'deadline-exceeded') {
-          setError('Request timed out. Please check your internet connection and try again.');
-        } else {
-          setError('Failed to load newsletter. Please try refreshing the page.');
-        }
+        setError('Failed to load newsletter. Please try refreshing the page.');
       } finally {
         setLoading(false);
       }
@@ -710,23 +666,12 @@ const NewsletterPublicView = () => {
     setIsTranslating(true);
     setActiveLanguage(targetLang);
     try {
-      const translateFn = httpsCallable(functions, 'translateNewsletter');
-      const result = await translateFn({
-        memberId: memberId || null,
-        newsletterId: memberId ? resolvedNewsletterId : null,
-        archiveId: archiveId || null,
-        targetLang,
-        sourceDate: newsletter.lastModified || newsletter.publishedDate || null,
-      });
-
-      const { newsletter: tNews } = result.data;
-
-      // Cache in-memory and apply
-      setTranslationCache(prev => ({ ...prev, [targetLang]: { newsletter: tNews } }));
-      setTranslatedNewsletter(tNews);
+      // No server-side translation endpoint exists on the Worker yet, so in-browser
+      // translation is not available. Fail gracefully and keep the original content.
+      throw new Error('translation-unavailable');
     } catch (err) {
       console.error('Translation failed:', err);
-      setTranslationError('Translation failed. Please try again.');
+      setTranslationError('Translation is not available for this newsletter right now.');
       setActiveLanguage('en');
     } finally {
       setIsTranslating(false);

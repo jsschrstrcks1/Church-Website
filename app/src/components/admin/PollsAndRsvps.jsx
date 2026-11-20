@@ -1,32 +1,43 @@
 import { useEffect, useState } from 'react';
-import { collection, getDocs, onSnapshot, query, where } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { apiNewsletters, apiNewsletterGet, apiPollTallies } from '../../api/client';
 import { RSVP_OPTIONS, formatEventDate } from '../../utils/newsletterEvents';
 import { exportToCSV } from '../../utils/csvExport';
 
-const sanitize = (value) => String(value ?? '').replace(/"/g, "'").replace(/\r?\n/g, ' | ');
-const sortNewest = (rows) => [...rows].sort((a, b) => (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0));
-const submittedText = (row) => (row.submittedAt?.toDate ? row.submittedAt.toDate().toLocaleString() : '');
+const sanitize = (value) => String(value ?? '').replace(/\"/g, "'").replace(/\r?\n/g, ' | ');
+const sortNewest = (rows) => [...rows].sort((a, b) => (b.submittedAt?.getTime?.() || 0) - (a.submittedAt?.getTime?.() || 0));
+const submittedText = (row) => (row.submittedAt?.getTime ? row.submittedAt.toLocaleString() : '');
 
-// Live votes or RSVPs for one poll/event section
-const useSectionResponses = (memberId, item) => {
+// Poll tallies for one poll section. The worker records votes per option_text under
+// /polls/:id/votes, so we synthesize one vote row per tally as the UI expects.
+const usePollRows = (sectionId, options) => {
   const [rows, setRows] = useState(null);
   useEffect(() => {
-    const rowsQuery = query(
-      collection(db, 'spaces', memberId, 'newsletters', item.newsletterId, 'responses'),
-      where('sectionId', '==', item.sectionId)
-    );
-    return onSnapshot(
-      rowsQuery,
-      (snap) => setRows(snap.docs.map((entry) => ({ id: entry.id, ...entry.data() }))),
-      () => setRows([])
-    );
-  }, [memberId, item.newsletterId, item.sectionId]);
+    if (!sectionId) return undefined;
+    let cancelled = false;
+    const load = async () => {
+      const tallies = await apiPollTallies(sectionId).catch(() => []);
+      if (cancelled) return;
+      const known = (options || []).filter(Boolean);
+      const seen = {};
+      const synthesized = [];
+      tallies.forEach((t) => {
+        const option = t.option_text;
+        seen[option] = true;
+        const votes = Number(t.votes) || 0;
+        for (let i = 0; i < votes; i++) synthesized.push({ option });
+      });
+      // Include options with no votes yet so every offered choice still shows a 0 bar.
+      known.forEach((option) => { if (!seen[option]) synthesized.push({ option }); });
+      setRows(synthesized);
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [sectionId, /* options identity changes each render; run once per section */ (options || []).join('|')]);
   return rows;
 };
 
 const PollDetail = ({ memberId, item }) => {
-  const rows = useSectionResponses(memberId, item);
+  const rows = usePollRows(item.sectionId, item.options);
   if (!rows) return <p className="text-gray-500">Loading...</p>;
 
   const extraOptions = [...new Set(rows.map((row) => row.option))].filter((option) => !item.options.includes(option));
@@ -64,7 +75,9 @@ const PollDetail = ({ memberId, item }) => {
 };
 
 const EventDetail = ({ memberId, item }) => {
-  const rows = useSectionResponses(memberId, item);
+  // The worker records RSVPs under /rsvps (write-only) and offers no read-back endpoint,
+  // so the per-row RSVP list has no source in the new backend. Show the empty state.
+  const rows = [];
   if (!rows) return <p className="text-gray-500">Loading...</p>;
 
   const sorted = sortNewest(rows);
@@ -125,35 +138,36 @@ const EventDetail = ({ memberId, item }) => {
   );
 };
 
-// Polls and event RSVPs from every newsletter, live.
+// Polls and event RSVPs from every newsletter, refreshed on load.
 const PollsAndRsvps = ({ memberId }) => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
 
   useEffect(() => {
-    if (!memberId) return;
     (async () => {
       try {
-        const snapshot = await getDocs(collection(db, 'spaces', memberId, 'newsletters'));
+        const list = await apiNewsletters(false);
         const found = [];
-        snapshot.docs.forEach((newsletterDoc) => {
-          const data = newsletterDoc.data();
+        for (const nl of list) {
+          let data = nl;
+          try { data = await apiNewsletterGet(nl.id); } catch (error) { /* skip individual fetch failures */ }
           const newsletterName = data.name || data.title || 'Untitled Newsletter';
-          (data.sections || []).forEach((section) => {
+          const sections = Array.isArray(data.content?.sections) ? data.content.sections : [];
+          sections.forEach((section) => {
             if (section.type === 'response') {
               found.push({
-                key: `${newsletterDoc.id}__${section.id}`, kind: 'poll', newsletterId: newsletterDoc.id, sectionId: section.id, newsletterName,
+                key: `${nl.id}__${section.id}`, kind: 'poll', newsletterId: nl.id, sectionId: section.id, newsletterName,
                 title: section.responsePrompt || 'Untitled poll', options: (section.responseOptions || []).filter(Boolean),
               });
             } else if (section.type === 'event' && section.eventCollectRsvps) {
               found.push({
-                key: `${newsletterDoc.id}__${section.id}`, kind: 'event', newsletterId: newsletterDoc.id, sectionId: section.id, newsletterName,
+                key: `${nl.id}__${section.id}`, kind: 'event', newsletterId: nl.id, sectionId: section.id, newsletterName,
                 title: section.eventName || 'Untitled event', subtitle: formatEventDate(section.eventDate),
               });
             }
           });
-        });
+        }
         setItems(found);
       } catch (error) {
         console.error('Error loading polls and events:', error);
@@ -161,7 +175,7 @@ const PollsAndRsvps = ({ memberId }) => {
         setLoading(false);
       }
     })();
-  }, [memberId]);
+  }, []);
 
   const current = items.find((item) => item.key === selected);
 
