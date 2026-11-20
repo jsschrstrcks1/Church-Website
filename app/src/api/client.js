@@ -83,9 +83,16 @@ export const apiNewsletterDelete = async (id) => (await request('DELETE', `/news
 export const apiFormCreate = async (body) => (await request('POST', '/forms', body)).data;
 export const apiFormResponse = async (formId, payload, respondent) => (await request('POST', `/forms/${formId}/responses`, { payload, respondent }, false)).data;
 export const apiFormResponses = async (formId) => (await request('GET', `/forms/${formId}/responses`)).data || [];
+export const apiFormResponseToggleReviewed = async (formId, rid) => (await request('POST', `/forms/${formId}/responses/${rid}/review`)).data;
+export const apiFormResponseDelete = async (formId, rid) => (await request('DELETE', `/forms/${formId}/responses/${rid}`)).data;
+export const apiFormDelete = async (formId) => (await request('DELETE', `/forms/${formId}`)).data;
 
 // ---- rsvp + polls ----
 export const apiRsvp = async (body) => (await request('POST', '/rsvps', body, false)).data;
+export const apiRsvps = async (filter) => {
+  const q = new URLSearchParams(filter || {}).toString();
+  return (await request('GET', `/rsvps${q ? `?${q}` : ''}`)).data || [];
+};
 export const apiPollVote = async (pollId, optionText, voter) => (await request('POST', '/polls/vote', { pollId, optionText, voter }, false)).data;
 export const apiPollTallies = async (pollId) => (await request('GET', `/polls/${pollId}/votes`)).data || [];
 

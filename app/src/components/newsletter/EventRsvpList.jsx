@@ -1,22 +1,38 @@
 import { useEffect, useState } from 'react';
 import { RSVP_OPTIONS } from '../../utils/newsletterEvents';
+import { apiRsvps } from '../../api/client';
 
-// Author-only list of RSVPs for one event section, fetched once (the worker
-// currently has no read endpoint for RSVP rows, so it degrades to an empty list).
+// Author-only list of RSVPs for one event section, fetched from the Worker read-back
+// (filtered by this newsletter). Shows empty while loading and when there's nothing yet.
 const EventRsvpList = ({ memberId, newsletterId, sectionId }) => {
   const [rsvps, setRsvps] = useState(null);
 
   useEffect(() => {
-    if (!memberId || !newsletterId || !sectionId) return undefined;
+    if (!newsletterId) return undefined;
     let cancelled = false;
     const load = async () => {
-      const rows = [];
+      let rows = [];
+      try {
+        rows = await apiRsvps({ newsletterId });
+      } catch (error) {
+        console.error('Error loading RSVPs:', error);
+        rows = [];
+      }
       if (cancelled) return;
-      setRsvps(rows.map((entry) => ({ id: entry.id, ...entry })));
+      setRsvps(
+        rows
+          .filter((entry) => !sectionId || String(entry.eventId) === String(sectionId))
+          .map((entry) => ({
+            id: entry.id,
+            name: entry.guestName || 'Guest',
+            option: entry.option || 'Going',
+            guests: Number(entry.guests) || 1,
+          }))
+      );
     };
     load();
     return () => { cancelled = true; };
-  }, [memberId, newsletterId, sectionId]);
+  }, [newsletterId, sectionId]);
 
   if (!rsvps) return null;
   if (!rsvps.length) return <p className="mt-2 text-sm text-gray-500">No RSVPs yet.</p>;

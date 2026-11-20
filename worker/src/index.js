@@ -140,8 +140,8 @@ export default {
         return cors(json({ ok: true }));
       }
       if (path === '/rsvps' && request.method === 'POST') {
-        const r = await db.prepare('INSERT INTO events_rsvps (event_id, newsletter_id, guest_name, guests, notes, created_at) VALUES (?,?,?,?,?,?)')
-          .bind(body.eventId || null, body.newsletterId || null, body.guestName || '', Number(body.guests) || 1, body.notes || '', new Date().toISOString()).run();
+        const r = await db.prepare('INSERT INTO events_rsvps (event_id, newsletter_id, guest_name, guests, option, notes, created_at) VALUES (?,?,?,?,?,?,?)')
+          .bind(body.eventId || null, body.newsletterId || null, body.guestName || '', Number(body.guests) || 1, body.option || '', body.notes || '', new Date().toISOString()).run();
         return cors(json({ id: r.meta.last_row_id }));
       }
       if (path === '/polls/vote' && request.method === 'POST') {
@@ -345,7 +345,7 @@ export default {
         return cors(json({ ok: true }));
       }
       // archive/reactivate (status) + publish + toggle — /newsletters/:id/action
-      const nlAct = path.match(/^\/newsletters\/([\w-]+)\/(archive|reactivate|publish|toggle-list)$/);
+      const nlAct = path.match(/^\/newsletters\/([\w-]+)\/(archive|reactivate|publish|unpublish|toggle-list)$/);
       if (nlAct && request.method === 'POST') {
         const [, id, action] = nlAct;
         const now = new Date().toISOString();
@@ -361,6 +361,11 @@ export default {
             .bind(id, slug || `nl-${id.slice(0, 8)}`, row.title || row.name, html, now).run();
           await db.prepare("UPDATE newsletters SET published=1, published_at=?, last_modified=? WHERE id=?").bind(now, now, id).run();
           return cors(json({ ok: true, slug }));
+        }
+        else if (action === 'unpublish') {
+          await db.prepare("UPDATE newsletters SET published=0, published_at=NULL, last_modified=? WHERE id=?").bind(now, id).run();
+          await db.prepare('DELETE FROM newsletter_public WHERE newsletter_id = ?').bind(id).run();
+          return cors(json({ ok: true }));
         }
         else if (action === 'toggle-list') {
           const row = await db.prepare('SELECT is_publicly_listed FROM newsletters WHERE id = ?').bind(id).first();
@@ -378,15 +383,44 @@ export default {
       }
       const formRespGet = path.match(/^\/forms\/([\w-]+)\/responses$/);
       if (formRespGet && request.method === 'GET') {
-        const rows = await db.prepare('SELECT * FROM form_responses WHERE form_id = ? ORDER BY created_at DESC').bind(formRespGet[1]).all();
-        return cors(json(rows.results.map((r) => ({ ...r, payload: JSON.parse(r.payload || '{}') }))));
+        const rows = await db.prepare('SELECT id, form_id AS formId, payload, respondent, reviewed, created_at FROM form_responses WHERE form_id = ? ORDER BY created_at DESC').bind(formRespGet[1]).all();
+        return cors(json(rows.results.map((r) => ({ ...r, payload: JSON.parse(r.payload || '{}'), reviewed: !!r.reviewed }))));
+      }
+      // toggle the reviewed flag on one response — /forms/:id/responses/:rid/review
+      const respToggle = path.match(/^\/forms\/([\w-]+)\/responses\/(\d+)\/review$/);
+      if (respToggle && request.method === 'POST') {
+        const [, formId, rid ] = respToggle;
+        await db.prepare('UPDATE form_responses SET reviewed = CASE WHEN reviewed=1 THEN 0 ELSE 1 END WHERE id=? AND form_id=?').bind(Number(rid), formId).run();
+        const row = await db.prepare('SELECT reviewed FROM form_responses WHERE id=? AND form_id=?').bind(Number(rid), formId).first();
+        return cors(json({ ok: true, reviewed: !!row?.reviewed }));
+      }
+      // delete a single response — /forms/:id/responses/:rid
+      const respDel = path.match(/^\/forms\/([\w-]+)\/responses\/(\d+)$/);
+      if (respDel && request.method === 'DELETE') {
+        await db.prepare('DELETE FROM form_responses WHERE id=? AND form_id=?').bind(Number(respDel[2]), respDel[1]).run();
+        return cors(json({ ok: true }));
+      }
+      // delete a whole form (and its responses) — /forms/:id
+      const formDel = path.match(/^\/forms\/([\w-]+)$/);
+      if (formDel && request.method === 'DELETE') {
+        await db.prepare('DELETE FROM form_responses WHERE form_id=?').bind(formDel[1]).run();
+        await db.prepare('DELETE FROM forms WHERE id=?').bind(formDel[1]).run();
+        return cors(json({ ok: true }));
       }
 
       // ================= Content: RSVPs + polls =================
-      if (path === '/rsvps' && request.method === 'POST') {
-        const r = await db.prepare('INSERT INTO events_rsvps (event_id, newsletter_id, guest_name, guests, notes, created_at) VALUES (?,?,?,?,?,?)')
-          .bind(body.eventId || null, body.newsletterId || null, body.guestName || '', Number(body.guests) || 1, body.notes || '', new Date().toISOString()).run();
-        return cors(json({ id: r.meta.last_row_id }));
+      // Authed RSVP read-back: ?newsletterId= or ?eventId=
+      // (The public rsvp POST above the auth gate earlier in this handler is the live one.)
+      if (path === '/rsvps' && request.method === 'GET') {
+        const byNl = url.searchParams.get('newsletterId');
+        const byEv = url.searchParams.get('eventId');
+        const cols = 'id, event_id AS eventId, newsletter_id AS newsletterId, guest_name AS guestName, guests, option, notes, created_at';
+        const rows = byNl
+          ? await db.prepare(`SELECT ${cols} FROM events_rsvps WHERE newsletter_id = ? ORDER BY created_at DESC`).bind(byNl).all()
+          : byEv
+            ? await db.prepare(`SELECT ${cols} FROM events_rsvps WHERE event_id = ? ORDER BY created_at DESC`).bind(String(byEv)).all()
+            : await db.prepare(`SELECT ${cols} FROM events_rsvps ORDER BY created_at DESC`).all();
+        return cors(json(rows.results));
       }
       if (path === '/polls/vote' && request.method === 'POST') {
         await db.prepare('INSERT INTO poll_votes (poll_id, option_text, voter, created_at) VALUES (?,?,?,?)')

@@ -1565,8 +1565,7 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
     }
   };
 
-  // Unpublish newsletter. The Worker API has no 'unpublish' action, so we save the
-  // editor doc with published:false and reflect the draft state locally.
+  // Unpublish newsletter: flips the Worker published flag off and removes the public row.
   const unpublishNewsletter = async () => {
     setSaving(true);
     try {
@@ -1575,7 +1574,6 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
         ...newsletter,
         headerOpacity: newsletter.headerOpacity ?? 1,
         contentOpacity: newsletter.contentOpacity ?? 1,
-        published: false,
         lastModified: new Date().toISOString(),
       };
       // Remove any undefined values
@@ -1586,6 +1584,7 @@ const NewsletterEditor = ({ memberProfile, newsletterId }) => {
         name: cleanedNewsletter.name,
         isPubliclyListed: cleanedNewsletter.isPubliclyListed,
       });
+      await apiNewsletterAction(newsletterId, 'unpublish');
       setNewsletter(prev => ({ ...prev, published: false }));
       alert('Newsletter unpublished successfully!');
     } catch (error) {

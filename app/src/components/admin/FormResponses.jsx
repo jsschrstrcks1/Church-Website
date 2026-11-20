@@ -2,7 +2,7 @@
 import AdminNav from './AdminNav';
 import { useEffect, useRef, useState } from 'react';
 
-import { apiNewsletters, apiNewsletterGet, apiNewsletterUpdate, apiFormResponses } from '../../api/client';
+import { apiNewsletters, apiNewsletterGet, apiNewsletterUpdate, apiFormResponses, apiFormResponseToggleReviewed, apiFormResponseDelete, apiFormDelete } from '../../api/client';
 import { useMemberAuth } from '../../context/MemberAuthContext';
 import { exportToCSV } from '../../utils/csvExport';
 import PollsAndRsvps from './PollsAndRsvps';
@@ -203,28 +203,30 @@ const FormResponses = () => {
     }
   };
 
-  // Author-only "I've looked at this one" marker. Optimistic local toggle; the new backend
-  // keeps no per-response flag, so this state lives for the session. Reverts on error.
+  // Author-only "I've looked at this one" marker. Optimistic toggle backed by the Worker
+  // (form_responses.reviewed). Reverts on error.
   const toggleReviewed = async (response) => {
     const reviewed = !response.reviewed;
     const setReviewedLocally = (value) =>
       setResponses(prev => prev.map(row => (row.id === response.id ? { ...row, reviewed: value } : row)));
     setReviewedLocally(reviewed);
     setActionError('');
-    // No api/client write exists for this marker, so it's purely local for now.
-    if (false) {
-      try {
-        // reserved so the optimistic toggle is the single source of truth
-      } catch (error) {
-        console.error('Error updating reviewed state:', error);
-        setReviewedLocally(!reviewed);
-        setActionError('Could not save that checkmark. Please try again.');
-      }
+    try {
+      const res = await apiFormResponseToggleReviewed(response.formId, response.id);
+      setReviewedLocally(!!res?.reviewed);
+    } catch (error) {
+      console.error('Error updating reviewed state:', error);
+      setReviewedLocally(!reviewed);
+      setActionError('Could not save that checkmark. Please try again.');
     }
   };
 
   const deleteResponse = async (response) => {
-    // The backend has no per-response delete endpoint; drop it from this session's list.
+    try {
+      await apiFormResponseDelete(response.formId, response.id);
+    } catch (error) {
+      console.error('Error deleting response:', error);
+    }
     setResponses(prev => prev.filter(row => row.id !== response.id));
   };
 
@@ -240,6 +242,12 @@ const FormResponses = () => {
       }
     } catch (error) {
       console.error('Error removing form section from newsletter:', error);
+    }
+    // Also drop the backend form row (and its responses) if it was persisted with a real id.
+    try {
+      if (form.formId) await apiFormDelete(form.formId);
+    } catch (error) {
+      console.error('Error deleting form row from backend:', error);
     }
 
     const map = loadArchivedMap();

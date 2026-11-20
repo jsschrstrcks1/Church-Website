@@ -162,6 +162,7 @@ CREATE TABLE IF NOT EXISTS form_responses (
   form_id   TEXT NOT NULL REFERENCES forms(id),
   payload   TEXT NOT NULL DEFAULT '{}',       -- {fieldKey: value}
   respondent TEXT,
+  reviewed  INTEGER NOT NULL DEFAULT 0 CHECK (reviewed IN (0,1)),
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_form_res_form ON form_responses(form_id);
@@ -169,13 +170,16 @@ CREATE INDEX IF NOT EXISTS idx_form_res_form ON form_responses(form_id);
 -- RSVPs and polls are special forms; keep one table, typed by kind.
 CREATE TABLE IF NOT EXISTS events_rsvps (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  event_id   INTEGER REFERENCES events(id),
+  event_id   TEXT,                            -- newsletter event-section id (not an events row)
   newsletter_id TEXT REFERENCES newsletters(id),
   guest_name TEXT,
   guests     INTEGER NOT NULL DEFAULT 1,
+  option     TEXT DEFAULT '',
   notes      TEXT DEFAULT '',
   created_at TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_rsvps_nl ON events_rsvps(newsletter_id);
+CREATE INDEX IF NOT EXISTS idx_rsvps_event ON events_rsvps(event_id);
 CREATE TABLE IF NOT EXISTS poll_votes (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   poll_id     TEXT NOT NULL,                  -- form id of the poll

@@ -1,5 +1,5 @@
 // Extended backend smoke: auth + members + events + newsletters + forms + rsvp + poll + share + files + live.
-const BASE = 'http://127.0.0.1:8787';
+const BASE = process.env.SMOKE_BASE || 'http://127.0.0.1:8787';
 const j = async (method, path, body, token) => {
   const res = await fetch(BASE + path, {
     method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },

@@ -1,5 +1,5 @@
 // Newsletter lifecycle smoke: create -> update content -> publish -> list/filter -> archive.
-const BASE = 'http://127.0.0.1:8787';
+const BASE = process.env.SMOKE_BASE || 'http://127.0.0.1:8787';
 const j = async (method, path, body, token) => {
   const res = await fetch(BASE + path, {
     method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },

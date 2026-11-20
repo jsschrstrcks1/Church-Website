@@ -38,6 +38,7 @@ const EventCard = ({ section, memberId, newsletterId, preview = false, accentCol
         newsletterId,
         guestName: name.trim().slice(0, 100),
         guests: option === 'Not going' ? 0 : Math.min(Math.max(parseInt(guests, 10) || 1, 1), 20),
+        option,
       });
       setConfirmed(option);
     } catch (submitError) {
