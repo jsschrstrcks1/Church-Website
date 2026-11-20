@@ -20,6 +20,16 @@ body {
 a { color: var(--blue-dark); text-decoration: none; }
 img { max-width: 100%; display: block; }
 
+/* ---------- Inner pages ---------- */
+main.page { max-width: 880px; margin: 0 auto; padding: 56px 4vw 80px; }
+main.page h1 { font-size: clamp(1.9rem, 4vw, 2.8rem); margin: 0 0 16px; color: var(--ink); }
+main.page h2 { color: var(--ink); margin: 30px 0 10px; }
+main.page p { color: var(--muted); margin: 0 0 14px; }
+main.page .lead { font-size: 1.15rem; color: #111; }
+main.page .note { font-size: .9rem; }
+.staff-card { background: #f5f6f7; padding: 24px 28px; border-radius: 8px; }
+.staff-card h2 { margin-top: 0; }
+
 /* ---------- Header / nav (grey, bold white uppercase links) ---------- */
 .site-header {
   display: flex; align-items: center; justify-content: space-between;
