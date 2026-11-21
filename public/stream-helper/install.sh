@@ -1,8 +1,8 @@
 #!/bin/bash
-# Installs (or updates) the Church Stream Helper on a Mac, for Live Studio at example.org/admin/live.
+# Installs (or updates) the Church Stream Helper on a Mac, for Live Studio at https://lakeviewfellowshipchurch.com/admin/live.
 #
-#   Install or update:  curl -fsSL https://example.org/stream-helper/install.sh | bash
-#   Remove:             curl -fsSL https://example.org/stream-helper/install.sh | bash -s -- --uninstall
+#   Install or update:  curl -fsSL https://lakeviewfellowshipchurch.com/stream-helper/install.sh | bash
+#   Remove:             curl -fsSL https://lakeviewfellowshipchurch.com/stream-helper/install.sh | bash -s -- --uninstall
 #
 # What it does (no administrator password needed, nothing outside your user folder):
 #   - downloads Node.js and ffmpeg (fixed versions, checked against known checksums)
@@ -10,10 +10,10 @@
 #   - downloads helper.mjs from the church website
 #   - sets the helper to start automatically when you log in, and starts it now
 #
-# EDIT: change SITE below (and the curl lines above) to your website address.
+# EDIT: default SITE is the church website; override anytime with STREAM_HELPER_SITE.
 set -euo pipefail
 
-SITE="${STREAM_HELPER_SITE:-https://example.org}"
+SITE="${STREAM_HELPER_SITE:-https://lakeviewfellowshipchurch.com}"
 APP_DIR="$HOME/Library/Application Support/Church Stream Helper"
 LABEL="org.example.streamhelper"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
