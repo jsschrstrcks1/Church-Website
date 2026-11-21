@@ -7,4 +7,4 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "lakeview-fellowship"
-database_id = "local-dev-placeholder"
+database_id = "f5167096-f126-480b-85c1-31fe254644fc"

@@ -554,8 +554,10 @@ async function issueSession(db, memberId) {
 }
 
 // PBKDF2-HMAC-SHA256 (WebCrypto) with a random salt, encoded "pbkdf2$iter$salt$hash"
+// NOTE: Cloudflare's workerd caps PBKDF2 iterations at 100,000 (runtime refuses more),
+// well below Node's 2,147,483,647. Keep iterations <= 100000 or auth dies in production.
 async function hashPassword(password) {
-  const iter = 210000;
+  const iter = 100000;
   const salt = await randomHex(16);
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: hexToBytes(salt), iterations: iter }, key, 256);
@@ -566,7 +568,7 @@ async function verifyPassword(password, stored) {
   try {
     const [alg, iterStr, salt, expect] = stored.split('$');
     if (alg !== 'pbkdf2') return false;
-    const iter = Number(iterStr) || 210000;
+    const iter = Math.min(Number(iterStr) || 100000, 100000);
     const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
     const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: hexToBytes(salt), iterations: iter }, key, 256);
     return bytesToHex(new Uint8Array(bits)) === expect;
