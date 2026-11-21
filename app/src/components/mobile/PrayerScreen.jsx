@@ -122,6 +122,11 @@ export default function PrayerScreen() {
           </div>
         </section>
       )}
+
+      <p className="mt-8 text-center font-serif text-sm text-church-muted">
+        Prefer to text? Send your request straight to the prayer line,{" "}
+        <a href="tel:8335095744" className="font-semibold text-church-navy underline">833-509-5744</a>.
+      </p>
     </div>
   );
 }
