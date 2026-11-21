@@ -1,0 +1,4 @@
+# Serve the SPA app for any /app/* deep link (login, admin, watch, pray…), while letting
+# the app's own assets load and leaving the public site (root) untouched.
+/app/assets/*  /app/assets/:splat  200
+/app/*  /app/index.html  200
