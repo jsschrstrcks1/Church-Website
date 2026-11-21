@@ -16,18 +16,17 @@ import { apiSaveDestinations, apiSetLive } from '../api/client';
 export const newId = () => Math.random().toString(36).slice(2, 10);
 
 const CHURCH_NAME = 'Lakeview Fellowship Church';
-const CHURCH_NAME_ES = 'Iglesia Lakeview Fellowship';
 
 export const DEFAULT_LIBRARY = {
   scenes: [
-    { id: 'countdown', name: 'Countdown', kind: 'countdown', minutes: 5, text: 'Service starts soon\nEl servicio comienza pronto' },
-    { id: 'welcome', name: 'Welcome', kind: 'card', text: `Welcome · Bienvenidos\n${CHURCH_NAME}` },
+    { id: 'countdown', name: 'Countdown', kind: 'countdown', minutes: 5, text: 'Service starts soon' },
+    { id: 'welcome', name: 'Welcome', kind: 'card', text: `Welcome\n${CHURCH_NAME}` },
     { id: 'live', name: 'Live', kind: 'live' },
-    { id: 'thanks', name: 'Thank you', kind: 'card', text: 'Thank you for joining us\nGracias por acompañarnos · See you next week' }
+    { id: 'thanks', name: 'Thank you', kind: 'card', text: 'Thank you for joining us\nSee you next week' }
   ],
   lowerThirds: [],
   tickers: [
-    { id: 'welcome', text: `Welcome to ${CHURCH_NAME} · Bienvenidos a ${CHURCH_NAME_ES}` }
+    { id: 'welcome', text: `Welcome to ${CHURCH_NAME}` }
   ],
   qrCodes: [],
   stream: { title: '', privacy: 'public', description: '' } // YouTube broadcast details (automatic setup)
