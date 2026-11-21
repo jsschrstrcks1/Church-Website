@@ -230,6 +230,43 @@ export default {
         return cors(json(out));
       }
 
+      // Serve a sermon's video by byte range. A <video> tag can't send a header, so
+      // members-only playback passes the session token as ?t= (checked against D1).
+      const sermonMedia = path.match(/^\/sermons\/([\w-]+)\/media$/);
+      if (sermonMedia && request.method === 'GET') {
+        const mrow = await db.prepare('SELECT media_key,title,visibility,published FROM sermons WHERE id=?').bind(sermonMedia[1]).first();
+        const staff = authed && (member.role === 'owner' || member.role === 'admin');
+        let viewerAuthed = authed;
+        if (!viewerAuthed) {
+          const t = new URL(request.url).searchParams.get('t');
+          if (t) {
+            const s = await sessionFromToken(db, t);
+            if (s) viewerAuthed = !!(await db.prepare("SELECT 1 FROM members WHERE id=? AND account_status='active'").bind(s.member_id).first());
+          }
+        }
+        if (!mrow || !mrow.media_key) return cors(json({ error: 'no-media' }, 404));
+        const visible = staff || (mrow.published === 1 && (mrow.visibility === 'public' || viewerAuthed));
+        if (!visible) return cors(json({ error: 'forbidden' }, 403));
+        if (!env.SERMONS) return cors(json({ error: 'media-not-configured' }, 501));
+        const obj = await env.SERMONS.get(mrow.media_key);
+        if (!obj) return cors(json({ error: 'media-missing' }, 404));
+        const size = Number(obj.size) || 0;
+        const public_ = mrow.visibility === 'public';
+        const V = { 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'Access-Control-Allow-Origin': '*', 'Cache-Control': public_ ? 'public, max-age=600' : 'private, no-store' };
+        const range = request.headers.get('range');
+        if (range) {
+          const rm = /bytes=(\d*)-(\d*)/.exec(range);
+          let start = rm && rm[1] !== '' ? parseInt(rm[1], 10) : 0;
+          let end = rm && rm[2] !== '' ? parseInt(rm[2], 10) : size - 1;
+          if (!Number.isFinite(start) || start < 0) start = 0;
+          if (!Number.isFinite(end) || end >= size) end = size - 1;
+          if (start > end || size === 0) return new Response('', { status: 416, headers: { ...V, 'Content-Range': `bytes */${size}` } });
+          const part = await env.SERMONS.get(mrow.media_key, { range: { offset: start, length: end - start + 1 } });
+          return new Response(part.body, { status: 206, headers: { ...V, 'Content-Range': `bytes ${start}-${end}/${size}` } });
+        }
+        return new Response(obj.body, { status: 200, headers: V });
+      }
+
       // Local Studio flips the public "live" flag on GO LIVE / Stop, using a shared secret
       // instead of a member session (replaces obsctl; the console isn't a member client).
       if (path === '/live/flag' && request.method === 'POST') {
@@ -743,6 +780,14 @@ function wordsToVtt(words, text) {
   }
   if (line.length) out += `${ts(lineStart)} --> ${ts(lineEnd)}\n${line.join(' ')}\n\n`;
   return out;
+}
+
+async function sessionFromToken(db, token) {
+  if (!token || typeof token !== 'string') return null;
+  const hash = await sha256hex(token);
+  const s = await db.prepare('SELECT token_hash, member_id, expires_at FROM sessions WHERE token_hash = ?').bind(hash).first();
+  if (!s || Date.parse(s.expires_at) < Date.now()) return null;
+  return { token_hash: hash, member_id: s.member_id };
 }
 
 async function resolveSession(request, db) {

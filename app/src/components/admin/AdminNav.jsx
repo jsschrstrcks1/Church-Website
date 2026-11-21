@@ -16,6 +16,7 @@ const AdminNav = () => {
     { to: '/admin/newsletter', label: 'Newsletters' },
     { to: '/admin/form-responses', label: 'Responses' },
     { to: '/admin/prayer', label: 'Prayer' },
+    { to: '/admin/sermons', label: 'Sermons' },
     { to: '/admin/live', label: 'Live' },
     ...(isOwner ? [{ to: '/admin/members', label: 'Members' }] : [])
   ];

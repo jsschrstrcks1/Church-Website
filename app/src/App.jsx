@@ -15,6 +15,7 @@ const NewsletterManager = React.lazy(() => import('./components/admin/Newsletter
 const NewsletterEditorWrapper = React.lazy(() => import('./components/admin/NewsletterEditorWrapper'));
 const FormResponses = React.lazy(() => import('./components/admin/FormResponses'));
 const PrayerAdmin = React.lazy(() => import('./components/admin/PrayerAdmin'));
+const SermonAdmin = React.lazy(() => import('./components/admin/SermonAdmin'));
 const LiveStudio = React.lazy(() => import('./components/admin/LiveStudio'));
 const SharePage = React.lazy(() => import('./components/share/SharePage'));
 const NewsletterPublicView = React.lazy(() => import('./components/newsletter/NewsletterPublicView'));
@@ -31,6 +32,7 @@ const MobileLayout = React.lazy(() => import('./components/mobile/MobileLayout')
 const WatchScreen = React.lazy(() => import('./components/mobile/WatchScreen'));
 const CalendarScreen = React.lazy(() => import('./components/mobile/CalendarScreen'));
 const PrayerScreen = React.lazy(() => import('./components/mobile/PrayerScreen'));
+const SermonScreen = React.lazy(() => import('./components/mobile/SermonScreen'));
 
 // The app is deployed under /app/ (vite base); route paths are relative to that.
 const routerBase = import.meta.env.BASE_URL ? import.meta.env.BASE_URL.replace(/\/$/, '') : undefined;
@@ -50,6 +52,8 @@ function App() {
             <Route path="/" element={<MobileLayout />}>
               <Route index element={<Navigate to="/watch" replace />} />
               <Route path="watch" element={<WatchScreen />} />
+              <Route path="sermons" element={<SermonScreen />} />
+              <Route path="sermons/:id" element={<SermonScreen />} />
               <Route path="calendar" element={<CalendarScreen />} />
               <Route path="pray" element={<PrayerScreen />} />
             </Route>
@@ -66,6 +70,7 @@ function App() {
             <Route path="/admin/newsletter/:newsletterId" element={member(<NewsletterEditorWrapper />)} />
             <Route path="/admin/form-responses" element={member(<FormResponses />)} />
             <Route path="/admin/prayer" element={member(<PrayerAdmin />)} />
+            <Route path="/admin/sermons" element={member(<SermonAdmin />)} />
             <Route path="/admin/live" element={member(<LiveStudio />)} />
             <Route path="/admin/profile" element={member(<Profile />)} />
             <Route path="/admin/members" element={member(<MembersManager />, { ownerOnly: true })} />

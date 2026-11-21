@@ -83,6 +83,14 @@ export const apiPrayerReview = async (id, status) => (await request('POST', `/pr
 export const apiPrayerAnswered = async (id, answered) => (await request('POST', `/prayer/${id}/answered`, { answered })).data;
 export const apiPrayerDelete = async (id) => (await request('DELETE', `/prayer/${id}`)).data;
 
+// ---- sermons (archive + transcripts + watch) ----
+export const apiSermons = async () => (await request('GET', '/sermons', undefined, true)).data || [];
+export const apiSermonGet = async (id) => (await request('GET', `/sermons/${id}`, undefined, true)).data;
+export const apiSermonCreate = async (s) => (await request('POST', '/sermons', s)).data;
+export const apiSermonPublish = async (id, published) => (await request('POST', `/sermons/${id}/publish`, { published })).data;
+export const apiSermonTranscribe = async (id, description) => (await request('POST', `/sermons/${id}/transcribe`, { description })).data;
+export const sermonMediaUrl = (id) => `${API_BASE}/sermons/${id}/media`;
+
 // ---- newsletters ----
 export const apiNewsletters = async (all = false) => (await request('GET', `/newsletters${all ? '?all=1' : ''}`)).data || [];
 export const apiNewsletterGet = async (id) => (await request('GET', `/newsletters/${id}`)).data;

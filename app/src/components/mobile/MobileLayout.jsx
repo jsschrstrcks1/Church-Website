@@ -43,6 +43,11 @@ export default function MobileLayout() {
             <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M10 9.2v5.6l4.6-2.8z" fill="currentColor" stroke="none"/></svg>
           )}
           {tab(
+            '/sermons',
+            'Sermons',
+            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M4 5.5A2.5 2.5 0 016.5 3H20v15H6.5A2.5 2.5 0 004 20.5z" strokeLinejoin="round"/><path d="M4 20.5A2.5 2.5 0 016.5 18H20" strokeLinejoin="round"/></svg>
+          )}
+          {tab(
             '/calendar',
             'Calendar',
             <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3" strokeLinecap="round"/></svg>
