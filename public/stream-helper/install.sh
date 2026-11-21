@@ -1,5 +1,5 @@
 #!/bin/bash
-# Installs (or updates) the Church Stream Helper on a Mac, for Live Studio at https://lakeviewfellowshipchurch.com/admin/live.
+# Installs (or updates) the Church Stream Helper on a Mac, for Live Studio at https://lakeviewfellowshipchurch.com/app/admin/live.
 #
 #   Install or update:  curl -fsSL https://lakeviewfellowshipchurch.com/stream-helper/install.sh | bash
 #   Remove:             curl -fsSL https://lakeviewfellowshipchurch.com/stream-helper/install.sh | bash -s -- --uninstall
@@ -116,7 +116,7 @@ launchctl bootstrap "gui/$(id -u)" "$PLIST"
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   if curl -fs "http://127.0.0.1:$PORT/status" >/dev/null 2>&1; then
     say "The Church Stream Helper is running."
-    echo "Open Live Studio in Chrome: $SITE/admin/live"
+    echo "Open Live Studio in Chrome: $SITE/app/admin/live"
     echo "If Chrome asks to allow access to devices on your local network, click Allow."
     exit 0
   fi
