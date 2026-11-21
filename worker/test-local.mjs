@@ -88,6 +88,24 @@ await call('POST', `/prayer/${emailPending[0].id}/review`, { status: 'approved' 
 r = await call('GET', '/prayer', null, { Authorization: 'Bearer member-token' });
 check('member sees only approved', r.status === 200 && r.data.every((p) => p.status === 'approved'), r.data.map((p) => p.status));
 
+// --- sermon routes: create/publish/visibility/transcribe-guard ---
+r = await call('POST', '/sermons', { title: 'Sermon: Grace', date: '2026-11-21', visibility: 'public', mediaKey: 'sermons/grace.mp4' }, { Authorization: 'Bearer staff-token' });
+const sid = r.data?.id;
+check('create sermon', r.status === 200 && !!sid, r.data);
+// anonymous sees nothing until published + public
+r = await call('GET', '/sermons');
+check('anon sermon list hides unpublished', r.status === 200 && Array.isArray(r.data) && r.data.length === 0, r.data);
+r = await call('POST', `/sermons/${sid}/publish`, { published: true }, { Authorization: 'Bearer staff-token' });
+check('publish sermon', r.status === 200, r.status);
+// member GET includes transcript fields (empty now) + visibility; anon does not
+r = await call('GET', `/sermons/${sid}`, null, { Authorization: 'Bearer member-token' });
+check('member sees sermon w/ transcript fields', r.status === 200 && r.data.vtt !== undefined, Object.keys(r.data));
+r = await call('GET', `/sermons/${sid}`);
+check('anon sees published public sermon', r.status === 200 && r.data.transcript === undefined, r.data);
+// transcribe guard returns 501 without env.AI/env.SERMONS
+r = await call('POST', `/sermons/${sid}/transcribe`, {}, { Authorization: 'Bearer staff-token' });
+check('transcribe guarded (501 without bindings)', r.status === 501, r.data);
+
 const pass = results.every((x) => x.ok);
 console.log('\n=== results ===');
 for (const x of results) console.log(`  [${x.ok ? 'PASS' : 'FAIL'}] ${x.name}${x.detail ? '  ' + x.detail : ''}`);

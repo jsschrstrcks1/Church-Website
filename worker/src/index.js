@@ -187,6 +187,29 @@ export default {
         return cors(json(rows.results));
       }
 
+      // ---- Sermons (archive + transcripts) ----
+      // Anonymous: published + public-visibility only, no transcript. Members: published
+      // (any visibility) incl. transcript + read-along VTT. Staff: everything.
+      if (path === '/sermons' && request.method === 'GET') {
+        const isStaff = authed && (member.role === 'owner' || member.role === 'admin');
+        let rows;
+        if (isStaff) rows = await db.prepare('SELECT id,title,date,mode,description,published,visibility,transcript_updated_at FROM sermons ORDER BY date DESC LIMIT 300').all();
+        else if (authed) rows = await db.prepare("SELECT id,title,date,mode,description,published,visibility,transcript_updated_at FROM sermons WHERE published=1 ORDER BY date DESC LIMIT 200").all();
+        else rows = await db.prepare("SELECT id,title,date,mode,description FROM sermons WHERE published=1 AND visibility='public' ORDER BY date DESC LIMIT 100").all();
+        return cors(json(rows.results));
+      }
+      const sermonGet = path.match(/^\/sermons\/([\w-]+)$/);
+      if (sermonGet && request.method === 'GET') {
+        const isStaff = authed && (member.role === 'owner' || member.role === 'admin');
+        const row = await db.prepare('SELECT * FROM sermons WHERE id=?').bind(sermonGet[1]).first();
+        if (!row) return cors(json({ error: 'not-found' }, 404));
+        const visible = isStaff || (authed ? row.published === 1 : (row.published === 1 && row.visibility === 'public'));
+        if (!visible) return cors(json({ error: 'not-found' }, 404));
+        const out = { id: row.id, title: row.title, date: row.date, mode: row.mode, description: row.description, published: !!row.published, visibility: row.visibility };
+        if (authed || isStaff) { out.transcript = row.transcript; out.vtt = row.transcript_vtt; }
+        return cors(json(out));
+      }
+
       // Local Studio flips the public "live" flag on GO LIVE / Stop, using a shared secret
       // instead of a member session (replaces obsctl; the console isn't a member client).
       if (path === '/live/flag' && request.method === 'POST') {
@@ -258,6 +281,44 @@ export default {
         if (!(member.role === 'owner' || member.role === 'admin')) return cors(json({ error: 'forbidden' }, 403));
         await db.prepare('UPDATE prayer_requests SET answered=? WHERE id=?').bind(body.answered === true ? 1 : 0, prayAnswer[1]).run();
         return cors(json({ ok: true }));
+      }
+
+      // ===== Sermons admin (create, publish, transcribe via Workers AI Whisper) =====
+      if (path === '/sermons' && request.method === 'POST') {
+        if (!(member.role === 'owner' || member.role === 'admin')) return cors(json({ error: 'forbidden' }, 403));
+        const date = typeof body.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date) ? body.date : new Date().toISOString().slice(0, 10);
+        const id = crypto.randomUUID();
+        await db.prepare('INSERT INTO sermons (id,title,date,mode,description,visibility,published,media_key,created_at,uploaded_by) VALUES (?,?,?,?,?,?,?,?,?,?)')
+          .bind(id, (body.title || '').slice(0, 200), date, body.mode === 'sunday' ? 'sunday' : 'wednesday',
+            (body.description || '').slice(0, 500), body.visibility === 'public' ? 'public' : 'members',
+            body.published === true ? 1 : 0, typeof body.mediaKey === 'string' ? body.mediaKey.slice(0, 300) : null,
+            new Date().toISOString(), member.id).run();
+        return cors(json({ id }));
+      }
+      const sermonPublish = path.match(/^\/sermons\/([\w-]+)\/publish$/);
+      if (sermonPublish && request.method === 'POST') {
+        if (!(member.role === 'owner' || member.role === 'admin')) return cors(json({ error: 'forbidden' }, 403));
+        await db.prepare('UPDATE sermons SET published=?, published_at=? WHERE id=?').bind(body.published === true ? 1 : 0, new Date().toISOString(), sermonPublish[1]).run();
+        return cors(json({ ok: true }));
+      }
+      // Transcribe a sermon clip (Workers AI Whisper). Needs env.AI + env.SERMONS (R2).
+      const sermonX = path.match(/^\/sermons\/([\w-]+)\/transcribe$/);
+      if (sermonX && request.method === 'POST') {
+        if (!(member.role === 'owner' || member.role === 'admin')) return cors(json({ error: 'forbidden' }, 403));
+        const row = await db.prepare('SELECT * FROM sermons WHERE id=?').bind(sermonX[1]).first();
+        if (!row || !row.media_key) return cors(json({ error: 'no-media' }, 400));
+        if (!env.AI || !env.SERMONS) return cors(json({ error: 'transcription-not-configured' }, 501));
+        const obj = await env.SERMONS.get(row.media_key);
+        if (!obj) return cors(json({ error: 'media-missing' }, 404));
+        const audio = await obj.arrayBuffer();
+        const out = await env.AI.run('@cf/openai/whisper-large-v3-turbo', { audio });
+        const transcript = String(out?.text || out?.output_text || '').trim();
+        const words = Array.isArray(out?.words) ? out.words : [];
+        const vtt = wordsToVtt(words, transcript);
+        const description = body.description !== undefined ? String(body.description).slice(0, 500) : transcript.slice(0, 220);
+        await db.prepare('UPDATE sermons SET transcript=?, transcript_vtt=?, description=?, transcript_updated_at=? WHERE id=?')
+          .bind(transcript, vtt, description, new Date().toISOString(), row.id).run();
+        return cors(json({ ok: true, words: words.length, vttChars: vtt.length }));
       }
 
       // Members management (owner only)
@@ -632,6 +693,36 @@ function restoreNewsletterContent(body) {
 
 function validEvent(b) {
   return b && typeof b.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.date) && typeof b.en === 'string' && b.en.trim();
+}
+
+// Build a WebVTT transcript from Whisper word timing (fallback: one cue for the whole text).
+function wordsToVtt(words, text) {
+  const pad = (n) => String(Math.floor(n)).padStart(2, '0');
+  const ts = (s) => { const ms = Math.round((Number(s) || 0) * 1000); const h = Math.floor(ms / 3600000); const m = Math.floor((ms % 3600000) / 60000); const sec = Math.floor((ms % 60000) / 1000); const mm = ms % 1000; return `${pad(h)}:${pad(m)}:${pad(sec)}.${String(mm).padStart(3, '0')}`; };
+  let out = 'WEBVTT\n\n';
+  if (!Array.isArray(words) || words.length === 0) {
+    if (text) out += `00:00:00.000 --> 99:00:00.000\n${text.replace(/\n/g, ' ')}\n\n`;
+    return out;
+  }
+  let line = [];
+  let lineStart = 0;
+  let lineEnd = 0;
+  let count = 0;
+  for (const w of words) {
+    const word = typeof w === 'string' ? w : (typeof w?.word === 'string' ? w.word : '');
+    if (!word) continue;
+    if (line.length === 0) lineStart = Number(w?.start) || lineStart;
+    if (Number.isFinite(Number(w?.end))) lineEnd = Number(w.end);
+    line.push(word);
+    count += 1;
+    if (count >= 8 || line.join(' ').length > 70) {
+      out += `${ts(lineStart)} --> ${ts(lineEnd)}\n${line.join(' ')}\n\n`;
+      line = [];
+      count = 0;
+    }
+  }
+  if (line.length) out += `${ts(lineStart)} --> ${ts(lineEnd)}\n${line.join(' ')}\n\n`;
+  return out;
 }
 
 async function resolveSession(request, db) {
