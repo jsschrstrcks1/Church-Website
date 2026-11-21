@@ -266,6 +266,18 @@ export default {
         }
         return new Response(obj.body, { status: 200, headers: V });
       }
+      // Staff upload a sermon video: raw bytes → R2 (mp4), record the key on the row.
+      // (Workers body limit ≈100 MB; larger clips need the presigned multipart path — see roadmap.)
+      if (sermonMedia && request.method === 'PUT') {
+        if (!(member.role === 'owner' || member.role === 'admin')) return cors(json({ error: 'forbidden' }, 403));
+        if (!env.SERMONS) return cors(json({ error: 'media-not-configured' }, 501));
+        const buf = await request.arrayBuffer();
+        if (!buf || buf.byteLength < 1000) return cors(json({ error: 'empty-body' }, 400));
+        const key = `sermons/${sermonMedia[1]}.mp4`;
+        await env.SERMONS.put(key, buf, { httpMetadata: { contentType: 'video/mp4' } });
+        await db.prepare('UPDATE sermons SET media_key=? WHERE id=?').bind(key, sermonMedia[1]).run();
+        return cors(json({ ok: true, mediaKey: key, bytes: buf.byteLength }));
+      }
 
       // Local Studio flips the public "live" flag on GO LIVE / Stop, using a shared secret
       // instead of a member session (replaces obsctl; the console isn't a member client).

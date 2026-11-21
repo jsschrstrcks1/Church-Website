@@ -90,6 +90,16 @@ export const apiSermonCreate = async (s) => (await request('POST', '/sermons', s
 export const apiSermonPublish = async (id, published) => (await request('POST', `/sermons/${id}/publish`, { published })).data;
 export const apiSermonTranscribe = async (id, description) => (await request('POST', `/sermons/${id}/transcribe`, { description })).data;
 export const sermonMediaUrl = (id) => `${API_BASE}/sermons/${id}/media`;
+// Staff upload a sermon's mp4 (raw bytes) — the Worker stores it in R2 and records the key.
+export const apiSermonUpload = async (id, fileOrBlob) => {
+  const res = await fetch(`${API_BASE}/sermons/${id}/media`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'video/mp4', Authorization: `Bearer ${getToken()}` },
+    body: fileOrBlob
+  });
+  if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+  return res.json();
+};
 
 // ---- newsletters ----
 export const apiNewsletters = async (all = false) => (await request('GET', `/newsletters${all ? '?all=1' : ''}`)).data || [];
