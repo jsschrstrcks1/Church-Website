@@ -25,6 +25,15 @@ const Loading = () => (
   </div>
 );
 
+// Mobile PWA (public): watch / calendar / pray — installable under /app/
+const MobileLayout = React.lazy(() => import('./components/mobile/MobileLayout'));
+const WatchScreen = React.lazy(() => import('./components/mobile/WatchScreen'));
+const CalendarScreen = React.lazy(() => import('./components/mobile/CalendarScreen'));
+const PrayerScreen = React.lazy(() => import('./components/mobile/PrayerScreen'));
+
+// The app is deployed under /app/ (vite base); route paths are relative to that.
+const routerBase = import.meta.env.BASE_URL ? import.meta.env.BASE_URL.replace(/\/$/, '') : undefined;
+
 // Every /admin page: the shared sign-in state plus the members-only guard
 const member = (element, options = {}) => (
   <ProtectedMemberRoute ownerOnly={options.ownerOnly}>{element}</ProtectedMemberRoute>
@@ -32,10 +41,18 @@ const member = (element, options = {}) => (
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={routerBase}>
       <MemberAuthProvider>
         <Suspense fallback={<Loading />}>
           <Routes>
+            {/* Mobile PWA home (public, no sign-in) — the installable app */}
+            <Route path="/" element={<MobileLayout />}>
+              <Route index element={<Navigate to="/watch" replace />} />
+              <Route path="watch" element={<WatchScreen />} />
+              <Route path="calendar" element={<CalendarScreen />} />
+              <Route path="pray" element={<PrayerScreen />} />
+            </Route>
+
             {/* Sign in and accept an invite */}
             <Route path="/login" element={<Login />} />
             <Route path="/invite/:inviteToken" element={<InviteSetup />} />

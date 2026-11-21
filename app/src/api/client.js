@@ -71,6 +71,11 @@ export const apiLiveStatus = async () => (await request('GET', '/live/status', u
 export const apiSetLive = async (live) => (await request('POST', '/live/state', { live })).data;
 export const apiSaveDestinations = async (destinations) => (await request('POST', '/live/destinations', { destinations })).data;
 
+// ---- prayer (public PWA intake/list) ----
+export const apiPrayerSubmit = async (text, visibility, submittedBy) =>
+  (await request('POST', '/prayer', { text, visibility, submittedBy }, false)).data;
+export const apiPrayerList = async () => (await request('GET', '/prayer', undefined, false)).data || [];
+
 // ---- newsletters ----
 export const apiNewsletters = async (all = false) => (await request('GET', `/newsletters${all ? '?all=1' : ''}`)).data || [];
 export const apiNewsletterGet = async (id) => (await request('GET', `/newsletters/${id}`)).data;
