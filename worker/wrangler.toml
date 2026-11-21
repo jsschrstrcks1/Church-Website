@@ -2,9 +2,19 @@ name = "lakeview-fellowship-backend"
 main = "src/index.js"
 compatibility_date = "2024-11-01"
 compatibility_flags = ["nodejs_compat"]
+account_id = "8a5ea2f622c25f11fcabfc01854890d2"
 
 # Local D1 binding (works without a Cloudflare account via wrangler dev --local)
 [[d1_databases]]
 binding = "DB"
 database_name = "lakeview-fellowship"
 database_id = "f5167096-f126-480b-85c1-31fe254644fc"
+
+# Workers AI (Whisper transcription for sermons)
+[ai]
+binding = "AI"
+
+# Sermon clips (R2)
+[[r2_buckets]]
+binding = "SERMONS"
+bucket_name = "lakeview-sermons"
