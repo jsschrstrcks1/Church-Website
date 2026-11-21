@@ -106,6 +106,12 @@ check('anon sees published public sermon', r.status === 200 && r.data.transcript
 r = await call('POST', `/sermons/${sid}/transcribe`, {}, { Authorization: 'Bearer staff-token' });
 check('transcribe guarded (501 without bindings)', r.status === 501, r.data);
 
+// logged-in members can opt to text the request to the church prayer line (queued until a sender is configured)
+r = await call('POST', '/prayer', { text: 'Please text me back', visibility: 'members', submittedBy: 'Ben', viaSms: true }, { Authorization: 'Bearer member-token' });
+check('member viaSms submit -> queued', r.status === 200 && r.data.smsDispatch === 'queued', r.data);
+r = await call('POST', '/prayer', { text: 'x', visibility: 'members', viaSms: true });
+check('anonymous viaSms ignored (none)', r.status === 200 && r.data.smsDispatch === 'none', r.data);
+
 const pass = results.every((x) => x.ok);
 console.log('\n=== results ===');
 for (const x of results) console.log(`  [${x.ok ? 'PASS' : 'FAIL'}] ${x.name}${x.detail ? '  ' + x.detail : ''}`);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiPrayerList, apiPrayerSubmit } from '../../api/client';
+import { apiPrayerList, apiPrayerSubmit, isLoggedIn } from '../../api/client';
 
 const VISIBLE = [
   { id: 'everyone', label: 'Shared with everyone', hint: 'Anyone on the app can read this' },
@@ -11,10 +11,13 @@ export default function PrayerScreen() {
   const [text, setText] = useState('');
   const [name, setName] = useState('');
   const [visibility, setVisibility] = useState('members');
+  const [viaSms, setViaSms] = useState(true);
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
+  const [smsMsg, setSmsMsg] = useState('');
   const [error, setError] = useState('');
   const [requests, setRequests] = useState([]);
+  const loggedIn = isLoggedIn();
 
   const load = () => apiPrayerList().then(setRequests).catch(() => {});
   useEffect(() => { load(); }, []);
@@ -24,13 +27,17 @@ export default function PrayerScreen() {
     if (!text.trim()) return;
     setSending(true);
     setError('');
+    setSmsMsg('');
     try {
-      await apiPrayerSubmit(text.trim(), visibility, name.trim());
+      const res = await apiPrayerSubmit(text.trim(), visibility, name.trim(), { viaSms: loggedIn && viaSms });
       setDone(true);
+      if (res?.smsDispatch === 'sent') setSmsMsg('Also texted to the church prayer line.');
+      else if (res?.smsDispatch === 'queued') setSmsMsg('We’ve saved it; SMS dispatch will be wired with the prayer line.');
+      else if (res?.smsDispatch === 'failed') setSmsMsg('Saved, but the text to the prayer line didn’t go through.');
       setText('');
       setName('');
       load();
-      setTimeout(() => setDone(false), 6000);
+      setTimeout(() => { setDone(false); setSmsMsg(''); }, 6000);
     } catch (err) {
       setError(err?.message || 'Could not send your request. Please try again.');
     } finally {

@@ -219,6 +219,8 @@ CREATE TABLE IF NOT EXISTS prayer_requests (
   answered     INTEGER NOT NULL DEFAULT 0 CHECK (answered IN (0,1)),
   submitted_by TEXT,                          -- optional contact/name (not a member id)
   source       TEXT NOT NULL DEFAULT 'app' CHECK (source IN ('app','sms','email')),
+  via_sms      INTEGER NOT NULL DEFAULT 0 CHECK (via_sms IN (0,1)), -- logged-in member asked to text it to the prayer line
+  sms_to       TEXT,                          -- configured prayer phone number (masked in reads)
   created_at   TEXT NOT NULL,
   reviewed_by  TEXT REFERENCES members(id),
   reviewed_at  TEXT,

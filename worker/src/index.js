@@ -173,7 +173,27 @@ export default {
         const submittedBy = typeof body.submittedBy === 'string' ? body.submittedBy.trim().slice(0, 120) : '';
         await db.prepare('INSERT INTO prayer_requests (id,text,visibility,status,submitted_by,source,created_at) VALUES (?,?,?,?,?,?,?)')
           .bind(id, text, visibility, 'pending', submittedBy || null, 'app', new Date().toISOString()).run();
-        return cors(json({ ok: true, id }));
+        // Logged-in members may also have the request texted to the church prayer line.
+        // Provider-agnostic: dispatch to env.SMS_SENDER_URL if configured, else leave as a
+        // normal pending request (sms_dispatch='queued' below is just informational).
+        let smsDispatched = false;
+        if (authed && body.viaSms === true) {
+          await db.prepare('UPDATE prayer_requests SET via_sms=1, sms_to=? WHERE id=?').bind((env.PRAYER_PHONE || '').slice(0, 30), id).run();
+          if (env.SMS_SENDER_URL) {
+            try {
+              const headers = { 'Content-Type': 'application/json' };
+              if (env.SMS_SENDER_TOKEN) headers['Authorization'] = `Bearer ${env.SMS_SENDER_TOKEN}`;
+              const r = await fetch(env.SMS_SENDER_URL, {
+                method: 'POST', headers,
+                body: JSON.stringify({ to: env.PRAYER_PHONE || '', text, member: submittedBy || null }),
+                signal: AbortSignal.timeout(8000)
+              });
+              smsDispatched = r.ok;
+              if (!r.ok) console.log('SMS dispatch failed:', r.status);
+            } catch (e) { console.log('SMS dispatch error:', e.message); }
+          }
+        }
+        return cors(json({ ok: true, id, smsDispatch: authed && body.viaSms === true ? (smsDispatched ? 'sent' : env.SMS_SENDER_URL ? 'failed' : 'queued') : 'none' }));
       }
       // Prayer reads: anonymous visitors see only approved + opted-in 'everyone'; logged-in
       // members see approved (all visibilities); staff see everything (pending/approved/denied).

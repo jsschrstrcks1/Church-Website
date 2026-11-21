@@ -72,9 +72,10 @@ export const apiSetLive = async (live) => (await request('POST', '/live/state', 
 export const apiSaveDestinations = async (destinations) => (await request('POST', '/live/destinations', { destinations })).data;
 
 // ---- prayer (public PWA intake/list) ----
-export const apiPrayerSubmit = async (text, visibility, submittedBy) =>
-  (await request('POST', '/prayer', { text, visibility, submittedBy }, false)).data;
+export const apiPrayerSubmit = async (text, visibility, submittedBy, opts = {}) =>
+  (await request('POST', '/prayer', { text, visibility, submittedBy, viaSms: opts.viaSms === true }, false)).data;
 export const apiPrayerList = async () => (await request('GET', '/prayer', undefined, false)).data || [];
+export const isLoggedIn = () => !!getToken();
 
 // ---- newsletters ----
 export const apiNewsletters = async (all = false) => (await request('GET', `/newsletters${all ? '?all=1' : ''}`)).data || [];
