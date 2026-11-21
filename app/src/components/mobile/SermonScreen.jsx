@@ -1,6 +1,7 @@
-// Sermons for members (and guests): the weekly captures. Guests see the 1–2 curated
-// (public) sermons; any logged-in member sees all published ones. Detail view has the
-// video player (the Worker serves R2 by range) plus the transcript and a read-along that
+// Sermons for members (and guests): the weekly captures. Guests see the curated (public)
+// sermons; any logged-in member sees all published ones. Detail view streams the sermon
+// FROM YOUTUBE in our own player when a YouTube video ID is set (recommended), else the
+// R2-stored mp4 via the Worker's range route — plus the transcript and a read-along that
 // highlights each line in sync with playback.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -19,6 +20,9 @@ const parseVtt = (vtt) => {
 
 const fmtDate = (d) => { try { return new Date(d).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }); } catch { return d; } };
 
+// YouTube video IDs are 11 chars of [A-Za-z0-9_-].
+const isYtId = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{11}$/.test(v);
+
 export default function SermonScreen() {
   const { id } = useParams();
   const [list, setList] = useState([]);
@@ -28,20 +32,49 @@ export default function SermonScreen() {
   const [cue, setCue] = useState(-1);
   const [src, setSrc] = useState('');
   const videoRef = useRef(null);
+  const ytHostRef = useRef(null);
+  const ytPlayerRef = useRef(null);
   const lineEndRef = useRef(null);
 
   useEffect(() => { (async () => { try { setList(await apiSermons()); } catch {} finally { setLoadingList(false); } })(); }, []);
   useEffect(() => { if (!id) return; (async () => { setLoadingSermon(true); try { const s = await apiSermonGet(id); setSermon(s); setCue(-1); const tok = getToken(); setSrc(sermonMediaUrl(id) + (tok ? `?t=${encodeURIComponent(tok)}` : '')); } catch {} finally { setLoadingSermon(false); } })(); }, [id]);
 
+  const ytId = useMemo(() => (sermon && isYtId(sermon.media_key) ? sermon.media_key : null), [sermon]);
   const cues = useMemo(() => (sermon ? parseVtt(sermon.vtt) : []), [sermon]);
 
-  const onTime = () => {
-    if (!videoRef.current || !cues.length) return;
-    const t = videoRef.current.currentTime;
+  // Map a video time to its active cue and scroll it into view.
+  const applyTime = (t) => {
     let i = -1;
     for (let k = 0; k < cues.length; k++) { if (t >= cues[k].start && t <= cues[k].end) { i = k; break; } }
-    setCue((prev) => { if (prev !== i) { lineEndRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }); } return i; });
+    setCue((prev) => { if (prev !== i) lineEndRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }); return i; });
   };
+
+  const onTime = () => { if (videoRef.current) applyTime(videoRef.current.currentTime); };
+
+  // YouTube IFrame API player (when the sermon is a YouTube video); poll currentTime to
+  // drive the read-along.
+  useEffect(() => {
+    if (!ytId) { if (ytPlayerRef.current) { try { ytPlayerRef.current.destroy(); } catch {} ytPlayerRef.current = null; } return undefined; }
+    if (!document.getElementById('youtube-iframe-api')) {
+      const tag = document.createElement('script');
+      tag.id = 'youtube-iframe-api';
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(tag);
+    }
+    let poll;
+    let watchdog;
+    const make = () => {
+      if (!window.YT?.Player || !ytHostRef.current) return;
+      ytPlayerRef.current = new window.YT.Player(ytHostRef.current, {
+        videoId: ytId,
+        playerVars: { rel: 0, modestbranding: 1, playsinline: 1 },
+        events: { onReady: () => { poll = setInterval(() => { try { if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') applyTime(ytPlayerRef.current.getCurrentTime()); } catch {} }, 500); } }
+      });
+    };
+    if (window.YT?.Player) make();
+    else watchdog = setInterval(() => { if (window.YT?.Player) { clearInterval(watchdog); make(); } }, 300);
+    return () => { clearInterval(poll); clearInterval(watchdog); if (ytPlayerRef.current) { try { ytPlayerRef.current.destroy(); } catch {} ytPlayerRef.current = null; } };
+  }, [ytId, cues.length]);
 
   // ---- List view ----
   if (!id) {
@@ -81,8 +114,13 @@ export default function SermonScreen() {
   return (
     <div>
       <div className="overflow-hidden rounded-2xl bg-black aspect-video">
-        <video ref={videoRef} onTimeUpdate={onTime} controls preload="metadata" className="h-full w-full" src={src} />
+        {ytId ? (
+          <div ref={ytHostRef} className="h-full w-full" />
+        ) : (
+          <video ref={videoRef} onTimeUpdate={onTime} controls preload="metadata" className="h-full w-full" src={src} />
+        )}
       </div>
+      {ytId && <p className="mt-1 text-[11px] text-church-muted">Playing from YouTube in our own player.</p>}
       <h1 className="mt-4 font-serif text-2xl font-semibold text-church-navy">{sermon.title}</h1>
       <p className="mt-1 text-sm text-church-muted">{sermon.mode === 'sunday' ? 'Sunday' : 'Wednesday'} · {fmtDate(sermon.date)}{sermon.visibility === 'public' ? ' · Open to all' : ''}</p>
       {sermon.description && <p className="mt-2 text-sm text-church-ink">{sermon.description}</p>}

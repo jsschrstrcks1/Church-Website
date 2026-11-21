@@ -225,7 +225,7 @@ export default {
         if (!row) return cors(json({ error: 'not-found' }, 404));
         const visible = isStaff || (authed ? row.published === 1 : (row.published === 1 && row.visibility === 'public'));
         if (!visible) return cors(json({ error: 'not-found' }, 404));
-        const out = { id: row.id, title: row.title, date: row.date, mode: row.mode, description: row.description, published: !!row.published, visibility: row.visibility };
+        const out = { id: row.id, title: row.title, date: row.date, mode: row.mode, description: row.description, published: !!row.published, visibility: row.visibility, media_key: row.media_key || null };
         if (authed || isStaff) { out.transcript = row.transcript; out.vtt = row.transcript_vtt; }
         return cors(json(out));
       }
