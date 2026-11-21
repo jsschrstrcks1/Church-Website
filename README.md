@@ -6,7 +6,7 @@ site we synthesize from it.
 ## What this is now (verified 2026-11-19)
 
 - **Public site** (`public/`): plain HTML/CSS/JS, rebranded to Lakeview Fellowship
-  Church (Hudson FL 34667; 9208 Bolton Ave; (727) 856-4100; "Taking strangers, making
+  Church (Hudson FL 34667; 9208 Bolton Ave; 833-509-5744; "Taking strangers, making
   family."). Bilingual EN/ES, events calendar, live-watch section. Verified to serve and
   render locally (HTTP 200 on all assets; EN/ES toggle works in a real browser).
 - **Deploy** (`.github/workflows/deploy.yml`): pushes to `main` deploy the static

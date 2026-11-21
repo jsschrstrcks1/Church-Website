@@ -7,6 +7,18 @@ const VISIBLE = [
 ];
 
 // Pray tab: submit a prayer request (public) + read the approved, shared ones.
+const PRAYER_NUMBER = '8335095744';
+
+// Open the device's own messaging app (Bob's SMS/iMessage) pre-filled with the request,
+// addressed to the church prayer line. iOS wants `&body=`, Android `?body=`.
+const openSmsCompose = (text) => {
+  const body = encodeURIComponent(text.slice(0, 159));
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
+  window.location.href = isIOS
+    ? `sms:${PRAYER_NUMBER}&body=${body}`
+    : `sms:${PRAYER_NUMBER}?body=${body}`;
+};
+
 export default function PrayerScreen() {
   const [text, setText] = useState('');
   const [name, setName] = useState('');
@@ -29,15 +41,17 @@ export default function PrayerScreen() {
     setError('');
     setSmsMsg('');
     try {
-      const res = await apiPrayerSubmit(text.trim(), visibility, name.trim(), { viaSms: loggedIn && viaSms });
+      await apiPrayerSubmit(text.trim(), visibility, name.trim(), { viaSms: loggedIn && viaSms });
       setDone(true);
-      if (res?.smsDispatch === 'sent') setSmsMsg('Also texted to the church prayer line.');
-      else if (res?.smsDispatch === 'queued') setSmsMsg('We’ve saved it; SMS dispatch will be wired with the prayer line.');
-      else if (res?.smsDispatch === 'failed') setSmsMsg('Saved, but the text to the prayer line didn’t go through.');
+      if (loggedIn && viaSms) {
+        setSmsMsg('We saved it. Tap send in your messages to text the prayer line.');
+        // Open Bob's own SMS/iMessage, pre-filled with his request to 833-509-5744.
+        setTimeout(() => openSmsCompose(text.trim()), 150);
+      }
       setText('');
       setName('');
       load();
-      setTimeout(() => { setDone(false); setSmsMsg(''); }, 6000);
+      setTimeout(() => { setDone(false); setSmsMsg(''); }, 8000);
     } catch (err) {
       setError(err?.message || 'Could not send your request. Please try again.');
     } finally {
@@ -93,6 +107,23 @@ export default function PrayerScreen() {
             ))}
           </div>
         </fieldset>
+
+        {loggedIn && (
+          <label className="flex items-start gap-2 rounded-xl border border-church-border bg-church-paper px-3 py-2.5">
+            <input
+              type="checkbox"
+              checked={viaSms}
+              onChange={(e) => setViaSms(e.target.checked)}
+              className="mt-1 h-4 w-4 accent-church-navy"
+            />
+            <span>
+              <span className="block font-sans text-sm font-semibold text-church-ink">Text it to the prayer line</span>
+              <span className="block text-xs text-church-muted">
+                Opens your own messages to 833-509-5744 so you can send it from your phone.
+              </span>
+            </span>
+          </label>
+        )}
 
         {error ? <p className="font-sans text-sm text-church-red">{error}</p> : null}
         {done ? (
