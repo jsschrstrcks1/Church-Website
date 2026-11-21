@@ -29,7 +29,7 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' };
 const AUTH_HEADER_NAME = 'authorization';
 const TOKEN_HEADER_RE = /^Bearer\s+([A-Za-z0-9\-_=]+)$/i;
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
-const STALE_LIVE_MS = 90 * 1000;
+const STALE_LIVE_MS = 180 * 60 * 1000; // 3h — a flag flip holds for a whole service; site polls /live/status every 45s
 
 export default {
   async fetch(request, env, ctx) {

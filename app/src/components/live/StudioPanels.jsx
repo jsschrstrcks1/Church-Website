@@ -181,7 +181,7 @@ const ConnectRow = ({ label, connected, name, configured, busy, idle, onConnect,
       </div>
       {connected ? (
         <p className="text-xs text-white/60">
-          {name || label} · set up automatically at each GO LIVE.{' '}
+          {name || label} · GO LIVE flips the site live (video still pushed from OBS).{' '}
           {idle && <button onClick={onDisconnect} className="underline hover:text-white">Disconnect</button>}
         </p>
       ) : children || (
@@ -203,7 +203,7 @@ const AutoSetupBox = ({ auto, stream, onStream, onConnect, onDisconnect, onChoos
     <div className="rounded-lg bg-white/5 p-3 space-y-4">
       <div>
         <p className="text-sm font-semibold">Automatic setup</p>
-        <p className="text-xs text-white/60 mt-1">Connect once. Then GO LIVE starts the broadcast on each connected site by itself: no stream keys, no YouTube Studio or Facebook Live Producer.</p>
+        <p className="text-xs text-white/60 mt-1">GO LIVE flips the site to "we're on air" here and shows the embed on the homepage. The video itself is pushed from OBS: give OBS your YouTube and Facebook stream keys (each platform's "Go live"/"Live" page shows one) and set them as two outputs. End stream turns the site flag back off.</p>
       </div>
       <ConnectRow label="YouTube" configured={auto.configured} connected={auto.connected} name={auto.channelTitle}
         busy={busy === 'youtube'} idle={idle} onConnect={() => onConnect('youtube')} onDisconnect={() => onDisconnect('youtube')} />
