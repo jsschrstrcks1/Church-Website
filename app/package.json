@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "postbuild": "node -e \"require('fs').copyFileSync('public/manifest.webmanifest','../public/app/manifest.webmanifest');require('fs').copyFileSync('public/sw.js','../public/app/sw.js')\"",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -1,0 +1,14 @@
+{
+  "name": "Lakeview Fellowship Church",
+  "short_name": "Lakeview",
+  "description": "Live worship, past sermons, and prayer requests from Lakeview Fellowship Church.",
+  "start_url": "/app/",
+  "scope": "/app/",
+  "display": "standalone",
+  "background_color": "#10295e",
+  "theme_color": "#10295e",
+  "icons": [
+    { "src": "/images/logo.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/images/logo.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
