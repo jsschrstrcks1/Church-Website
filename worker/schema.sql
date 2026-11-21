@@ -206,3 +206,23 @@ CREATE TABLE IF NOT EXISTS files (
   uploaded_by TEXT REFERENCES members(id),
   created_at  TEXT NOT NULL
 );
+
+-- ============================================================
+-- Prayer requests (PWA). Anyone can submit; the submitter picks
+-- visibility; an admin approves before it appears; staff see all.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS prayer_requests (
+  id           TEXT PRIMARY KEY,              -- uuid
+  text         TEXT NOT NULL,                 -- the request
+  visibility   TEXT NOT NULL DEFAULT 'members' CHECK (visibility IN ('everyone','members')),
+  status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','denied')),
+  answered     INTEGER NOT NULL DEFAULT 0 CHECK (answered IN (0,1)),
+  submitted_by TEXT,                          -- optional contact/name (not a member id)
+  source       TEXT NOT NULL DEFAULT 'app' CHECK (source IN ('app','sms','email')),
+  created_at   TEXT NOT NULL,
+  reviewed_by  TEXT REFERENCES members(id),
+  reviewed_at  TEXT,
+  approved_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_prayer_status ON prayer_requests(status);
+CREATE INDEX IF NOT EXISTS idx_prayer_vis ON prayer_requests(visibility);

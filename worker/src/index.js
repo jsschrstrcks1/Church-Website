@@ -161,6 +161,49 @@ export default {
         return new Response(new Uint8Array([...bin].map((c) => c.charCodeAt(0))), { headers: { 'Content-Type': row.mime, 'Cache-Control': 'public, max-age=31536000' } });
       }
 
+      // ===== Prayer requests (public intake + public read) =====
+      // Anyone can submit; requests land PENDING and need staff approval before showing.
+      if (path === '/prayer' && request.method === 'POST') {
+        const text = typeof body.text === 'string' ? body.text.trim() : '';
+        if (!text) return cors(json({ error: 'empty-prayer' }, 400));
+        if (text.length > 4000) return cors(json({ error: 'too-long' }, 400));
+        // Default to members-only (privacy): the submitter opts in to 'everyone'.
+        const visibility = body.visibility === 'everyone' ? 'everyone' : 'members';
+        const id = crypto.randomUUID();
+        const submittedBy = typeof body.submittedBy === 'string' ? body.submittedBy.trim().slice(0, 120) : '';
+        await db.prepare('INSERT INTO prayer_requests (id,text,visibility,status,submitted_by,source,created_at) VALUES (?,?,?,?,?,?,?)')
+          .bind(id, text, visibility, 'pending', submittedBy || null, 'app', new Date().toISOString()).run();
+        return cors(json({ ok: true, id }));
+      }
+      // Prayer reads: anonymous visitors see only approved + opted-in 'everyone'; logged-in
+      // members see approved (all visibilities); staff see everything (pending/approved/denied).
+      if (path === '/prayer' && request.method === 'GET') {
+        const isStaff = authed && (member.role === 'owner' || member.role === 'admin');
+        const rows = isStaff
+          ? await db.prepare("SELECT id,text,visibility,status,answered,submitted_by,source,created_at,approved_at FROM prayer_requests ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, created_at DESC LIMIT 500").all()
+          : authed
+            ? await db.prepare("SELECT id,text,visibility,status,answered,created_at FROM prayer_requests WHERE status='approved' ORDER BY created_at DESC LIMIT 200").all()
+            : await db.prepare("SELECT id,text,created_at FROM prayer_requests WHERE status='approved' AND visibility='everyone' AND answered=0 ORDER BY created_at DESC LIMIT 100").all();
+        return cors(json(rows.results));
+      }
+
+      // Local Studio flips the public "live" flag on GO LIVE / Stop, using a shared secret
+      // instead of a member session (replaces obsctl; the console isn't a member client).
+      if (path === '/live/flag' && request.method === 'POST') {
+        if (!env.LIVE_FLAG_KEY || request.headers.get('x-live-key') !== env.LIVE_FLAG_KEY) {
+          return cors(json({ error: 'forbidden' }, 403));
+        }
+        const now = new Date().toISOString();
+        if (body.live === true) {
+          await db.prepare("UPDATE live_state SET status='live', heartbeat_at=? WHERE id=1").bind(now).run();
+          await db.prepare('UPDATE public_live SET live=1, heartbeat_at=? WHERE id=1').bind(now).run();
+        } else {
+          await db.prepare("UPDATE live_state SET status='idle', ended_at=? WHERE id=1").bind(now).run();
+          await db.prepare('UPDATE public_live SET live=0, ended_at=? WHERE id=1').bind(now).run();
+        }
+        return cors(json({ ok: true }));
+      }
+
       if (!authed) return cors(json({ error: 'unauthorized' }, 401));
 
       // Logout
@@ -191,6 +234,31 @@ export default {
         return cors(json({ ok: true }));
       }
 
+
+      // ===== Prayer requests (member read + staff moderation) =====
+      // (List read is handled above for all three roles.)
+      const pray = path.match(/^\/prayer\/([\w-]+)$/);
+      if (pray && request.method === 'DELETE') {
+        if (!(member.role === 'owner' || member.role === 'admin')) return cors(json({ error: 'forbidden' }, 403));
+        await db.prepare('DELETE FROM prayer_requests WHERE id = ?').bind(pray[1]).run();
+        return cors(json({ ok: true }));
+      }
+      const prayReview = path.match(/^\/prayer\/([\w-]+)\/review$/);
+      if (prayReview && request.method === 'POST') {
+        if (!(member.role === 'owner' || member.role === 'admin')) return cors(json({ error: 'forbidden' }, 403));
+        const status = body.status === 'approved' ? 'approved' : body.status === 'denied' ? 'denied' : null;
+        if (!status) return cors(json({ error: 'invalid-status' }, 400));
+        const now = new Date().toISOString();
+        await db.prepare('UPDATE prayer_requests SET status=?, reviewed_by=?, answered=?, approved_at=?, reviewed_at=? WHERE id=?')
+          .bind(status, member.id, body.answered === true ? 1 : 0, status === 'approved' ? now : null, now, prayReview[1]).run();
+        return cors(json({ ok: true }));
+      }
+      const prayAnswer = path.match(/^\/prayer\/([\w-]+)\/answered$/);
+      if (prayAnswer && request.method === 'POST') {
+        if (!(member.role === 'owner' || member.role === 'admin')) return cors(json({ error: 'forbidden' }, 403));
+        await db.prepare('UPDATE prayer_requests SET answered=? WHERE id=?').bind(body.answered === true ? 1 : 0, prayAnswer[1]).run();
+        return cors(json({ ok: true }));
+      }
 
       // Members management (owner only)
       const isOwner = member.role === 'owner';
@@ -469,6 +537,37 @@ export default {
     } catch (e) {
       return new Response(JSON.stringify({ error: e.message || 'internal' }), { status: 500, headers: JSON_HEADERS });
     }
+  },
+
+  // Cloudflare Email Routing -> this Worker (prayers@lakeviewfellowshipchurch.com).
+  // An inbound email is turned into a PENDING prayer request (default members-only) so it
+  // lands in the same staff-approval queue as app submissions. Best effort: a malformed
+  // email must not break routing.
+  async email(message, env) {
+    try {
+      const db = env.DB;
+      let raw = '';
+      const stream = message.raw || message.text;
+      if (stream && typeof stream.getReader === 'function') {
+        const reader = stream.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          raw += new TextDecoder().decode(value);
+          if (raw.length > 65536) break;
+        }
+      }
+      // Crude text extraction: drop headers/signature/replies and HTML tags.
+      const body = raw.replace(/^[^\r\n]*\r?\n(?:\r?\n)+/s, '') // first line + blank line = SMTP preamble
+        .replace(/\r?\n>.*$/s, '').replace(/^(-+\s*)+$/gm, '')   // quoted replies + sig dashes
+        .replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+      const text = body.slice(0, 4000);
+      if (!text) return;
+      const from = typeof message.from === 'string' ? message.from : (message.from?.address || '');
+      const id = crypto.randomUUID();
+      await db.prepare('INSERT INTO prayer_requests (id,text,visibility,status,submitted_by,source,created_at) VALUES (?,?,?,?,?,?,?)')
+        .bind(id, text, 'members', 'pending', from || null, 'email', new Date().toISOString()).run();
+    } catch { /* ignore; routing shouldn't fail on a bad email */ }
   }
 };
 
