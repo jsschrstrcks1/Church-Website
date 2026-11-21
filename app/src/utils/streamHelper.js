@@ -5,10 +5,12 @@
 // passed to the helper in order. Chrome may ask once to "access other apps and services on this
 // device" (its local network permission): that's this, and it must be allowed.
 
-import { SITE_URL } from '../firebase/config';
+// (imports) — SITE_URL no longer used here; install URL derives from window.location.origin.
 
 export const HELPER_URL = 'http://127.0.0.1:51735';
-export const INSTALL_COMMAND = `curl -fsSL ${SITE_URL}/stream-helper/install.sh | bash`;
+// Build from the page's own origin so the command always points at a live copy of
+// install.sh + helper.mjs — today that's the Pages host, after DNS it's the church domain.
+export const INSTALL_COMMAND = `curl -fsSL ${window.location.origin}/stream-helper/install.sh | STREAM_HELPER_SITE=${window.location.origin} bash`;
 
 // { ok, version, live, outputs, lastError }, or null if the helper isn't running (or Chrome blocked it)
 export const getHelperStatus = async () => {
