@@ -14,6 +14,7 @@ const Profile = React.lazy(() => import('./components/admin/Profile'));
 const NewsletterManager = React.lazy(() => import('./components/admin/NewsletterManager'));
 const NewsletterEditorWrapper = React.lazy(() => import('./components/admin/NewsletterEditorWrapper'));
 const FormResponses = React.lazy(() => import('./components/admin/FormResponses'));
+const PrayerAdmin = React.lazy(() => import('./components/admin/PrayerAdmin'));
 const LiveStudio = React.lazy(() => import('./components/admin/LiveStudio'));
 const SharePage = React.lazy(() => import('./components/share/SharePage'));
 const NewsletterPublicView = React.lazy(() => import('./components/newsletter/NewsletterPublicView'));
@@ -64,6 +65,7 @@ function App() {
             <Route path="/admin/newsletter" element={member(<NewsletterManager />)} />
             <Route path="/admin/newsletter/:newsletterId" element={member(<NewsletterEditorWrapper />)} />
             <Route path="/admin/form-responses" element={member(<FormResponses />)} />
+            <Route path="/admin/prayer" element={member(<PrayerAdmin />)} />
             <Route path="/admin/live" element={member(<LiveStudio />)} />
             <Route path="/admin/profile" element={member(<Profile />)} />
             <Route path="/admin/members" element={member(<MembersManager />, { ownerOnly: true })} />

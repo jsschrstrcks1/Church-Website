@@ -77,6 +77,12 @@ export const apiPrayerSubmit = async (text, visibility, submittedBy, opts = {}) 
 export const apiPrayerList = async () => (await request('GET', '/prayer', undefined, false)).data || [];
 export const isLoggedIn = () => !!getToken();
 
+// ---- prayer (staff moderation: approve/deny/answered/delete) ----
+export const apiPrayerAdminList = async () => (await request('GET', '/prayer')).data || [];
+export const apiPrayerReview = async (id, status) => (await request('POST', `/prayer/${id}/review`, { status })).data;
+export const apiPrayerAnswered = async (id, answered) => (await request('POST', `/prayer/${id}/answered`, { answered })).data;
+export const apiPrayerDelete = async (id) => (await request('DELETE', `/prayer/${id}`)).data;
+
 // ---- newsletters ----
 export const apiNewsletters = async (all = false) => (await request('GET', `/newsletters${all ? '?all=1' : ''}`)).data || [];
 export const apiNewsletterGet = async (id) => (await request('GET', `/newsletters/${id}`)).data;
