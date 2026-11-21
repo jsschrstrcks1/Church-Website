@@ -226,3 +226,27 @@ CREATE TABLE IF NOT EXISTS prayer_requests (
 );
 CREATE INDEX IF NOT EXISTS idx_prayer_status ON prayer_requests(status);
 CREATE INDEX IF NOT EXISTS idx_prayer_vis ON prayer_requests(visibility);
+
+-- ============================================================
+-- Sermon archive + transcripts (Workers AI Whisper at upload time).
+-- transcript holds the text; transcript_vtt holds line timing for the
+-- members' read-along. description/metadata are auto-filled from the transcript.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS sermons (
+  id           TEXT PRIMARY KEY,              -- uuid
+  title        TEXT NOT NULL DEFAULT '',
+  date         TEXT NOT NULL,                 -- YYYY-MM-DD
+  mode         TEXT NOT NULL DEFAULT 'wednesday' CHECK (mode IN ('sunday','wednesday')),
+  description  TEXT NOT NULL DEFAULT '',
+  transcript   TEXT NOT NULL DEFAULT '',
+  transcript_vtt TEXT NOT NULL DEFAULT '',
+  media_key    TEXT,                          -- R2 object key for the clip mp4
+  visibility   TEXT NOT NULL DEFAULT 'members' CHECK (visibility IN ('public','members')),
+  published    INTEGER NOT NULL DEFAULT 0 CHECK (published IN (0,1)),
+  created_at   TEXT NOT NULL,
+  uploaded_by  TEXT REFERENCES members(id),
+  transcript_updated_at TEXT,
+  published_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sermons_date ON sermons(date);
+CREATE INDEX IF NOT EXISTS idx_sermons_vis ON sermons(visibility);
