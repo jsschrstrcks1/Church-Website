@@ -7,6 +7,8 @@ const FIREBASE_PROJECT_ID = '';
 const FIREBASE_API_KEY = '';
 const YOUTUBE_CHANNEL_ID = 'UCWMPfjgxhLvh7e8fpsjBPpw';
 const FACEBOOK_URL = 'https://www.facebook.com/LakeviewFellowshipChurch/';
+// Self-hosted backend (Cloudflare Worker + D1). The public site reads the live flag here.
+const WORKER_API = 'https://lakeview-fellowship-backend.inthewake-jerusha.workers.dev';
 // NOTE: with FIREBASE_PROJECT_ID empty, the Firestore calls fail fast and the page shows
 // only the fixed events in js/events.js and the offline live schedule. This keeps the
 // public site fully static (no Firebase) until the Workers/D1 API replaces it.
@@ -199,24 +201,17 @@ async function loadAdminEvents() {
 }
 loadAdminEvents();
 
-// ----- Watch live -----
+// ----- Watch live (self-hosted Worker /live/status) -----
+// OBS pushes the service to YouTube and Facebook directly; the site shows both when the
+// admin flips the live flag. YouTube embeds when available; both buttons always shown live.
 const liveSection = document.getElementById('live');
 const liveBar = document.getElementById('live-bar');
 const livePlayer = document.getElementById('live-player');
 let isLive = false;
 
-function setLive(live, onYouTube, videoId) {
-  const key = `${onYouTube}:${videoId || ''}`;
-  if (live === isLive && (!live || livePlayer.dataset.youtube === key)) return;
-  isLive = live;
-  document.documentElement.dataset.live = String(live);
-  liveSection.dataset.live = String(live);
-  liveSection.querySelector('.live-offline').hidden = live;
-  liveSection.querySelector('.live-on').hidden = !live;
-  liveBar.hidden = !live;
-  livePlayer.dataset.youtube = key;
+function renderLive(onYouTube, videoId) {
+  livePlayer.dataset.youtube = `${onYouTube}:${videoId || ''}`;
   livePlayer.textContent = '';
-  if (!live) return;
   if (onYouTube) {
     const frame = document.createElement('iframe');
     frame.src = videoId
@@ -226,21 +221,31 @@ function setLive(live, onYouTube, videoId) {
     frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
     frame.allowFullscreen = true;
     livePlayer.appendChild(frame);
-  } else {
-    livePlayer.innerHTML = `<div class="live-fb"><a class="button outline" href="${FACEBOOK_URL}" target="_blank" rel="noopener">`
-      + '<span class="en">Watch on Facebook</span><span class="es">Véalo en Facebook</span></a></div>';
   }
 }
 
+function setLive(live, onYouTube, videoId) {
+  const key = `${onYouTube}:${videoId || ''}`;
+  const playerSame = livePlayer.dataset.youtube === key;
+  if (live === isLive && (!live || playerSame)) return;
+  isLive = live;
+  document.documentElement.dataset.live = String(live);
+  liveSection.dataset.live = String(live);
+  liveSection.querySelector('.live-offline').hidden = live;
+  liveSection.querySelector('.live-on').hidden = !live;
+  liveBar.hidden = !live;
+  if (!live) { livePlayer.dataset.youtube = ''; livePlayer.textContent = ''; return; }
+  renderLive(onYouTube, videoId);
+}
+
 async function checkLive() {
-  const url = `${FIRESTORE_DOCS}/publicLive/status?key=${FIREBASE_API_KEY}`;
   try {
-    const res = await fetch(url, { cache: 'no-store' });
+    const res = await fetch(`${WORKER_API}/live/status`, { cache: 'no-store' });
     if (!res.ok) { setLive(false, false); return; }
-    const f = (await res.json()).fields || {};
-    const beat = Date.parse((f.heartbeatAt && f.heartbeatAt.stringValue) || '');
-    const live = !!(f.live && f.live.booleanValue) && Date.now() - beat < 3 * 60 * 1000;
-    setLive(live, !f.youtube || f.youtube.booleanValue !== false, (f.youtubeVideoId && f.youtubeVideoId.stringValue) || '');
+    const st = await res.json();
+    // Worker already handles staleness: live is only true while heartbeat is fresh.
+    const live = !!st.live;
+    setLive(live, !!st.youtube, (st.youtubeVideoId || ''));
   } catch (e) {
     // Offline: leave the section as it is
   }

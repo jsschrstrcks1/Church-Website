@@ -120,3 +120,16 @@ main.page .note { font-size: .9rem; }
   .cards { grid-template-columns: 1fr; gap: 22px; }
   .card img { height: 320px; }
 }
+
+/* ---------- Watch live ---------- */
+.live { text-align: center; padding: 40px 4vw; }
+.live h2 { margin: 0 0 10px; }
+.live .live-offline, .live .live-on { color: var(--muted); margin: 0 0 14px; }
+.live-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  background: #e33; margin-right: 6px; animation: live-pulse 1.4s infinite; vertical-align: middle; }
+@keyframes live-pulse { 0%{opacity:1} 50%{opacity:.25} 100%{opacity:1} }
+.live-player { max-width: 720px; margin: 0 auto; }
+.live-player iframe { width: 100%; aspect-ratio: 16/9; border: 0; border-radius: 8px; display: block;
+  background: #000; }
+.live-bar { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+.live-bar .btn { }
