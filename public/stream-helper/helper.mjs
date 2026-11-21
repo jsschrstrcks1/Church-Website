@@ -28,13 +28,12 @@ const VERSION = '1.2.0';
 const PORT = Number(process.env.STREAM_HELPER_PORT || 51735);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FFMPEG = process.env.STREAM_HELPER_FFMPEG || (existsSync(join(HERE, 'ffmpeg')) ? join(HERE, 'ffmpeg') : 'ffmpeg');
-// EDIT: the websites allowed to use this helper: your domain (with and without www) and your
-// Firebase Hosting addresses. Keep localhost for local development.
+// EDIT: the websites allowed to use this helper: the live site (with and without www),
+// the Cloudflare Pages host it's currently served from, and localhost for development.
 const ALLOWED_ORIGINS = new Set([
-  'https://example.org',
-  'https://www.example.org',
-  'https://your-firebase-project-id.web.app',
-  'https://your-firebase-project-id.firebaseapp.com',
+  'https://lakeview-fellowship-church.pages.dev',
+  'https://lakeviewfellowshipchurch.com',
+  'https://www.lakeviewfellowshipchurch.com',
   'http://localhost:5173'
 ]);
 const MAX_OUTPUTS = 6;
