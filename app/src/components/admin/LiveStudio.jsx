@@ -584,6 +584,35 @@ const LiveStudio = () => {
     }
   };
 
+  // One-tap for the volunteer: capture the Proclaim window (lyrics/announcements) and,
+  // if the camera is on, show it as the small box in the corner over the camera. The
+  // browser will ask which window to share — they just tap "Faithlife Proclaim".
+  const captureProclaim = async () => {
+    mixer?.resumeAudio();
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: true
+      });
+      streamsRef.current.screen = stream;
+      mixer?.setScreen(stream);
+      stream.getVideoTracks()[0].addEventListener('ended', stopSharing);
+      setSharing(true);
+      // layout 'pip' + swap => camera full-screen, the screen source (Proclaim) in the corner.
+      updateControl({
+        layout: cameraOn ? 'pip' : 'screen',
+        swap: cameraOn,
+        sceneId: liveScene.id,
+        sceneEndsAt: 0
+      });
+    } catch (error) {
+      if (error?.name !== 'NotAllowedError') {
+        console.error('Proclaim capture error:', error);
+        setMediaError('Could not capture Proclaim. In the window that opens, choose "Faithlife Proclaim" and tap Share.');
+      }
+    }
+  };
+
   // ----- Stream helper (streaming computer only) -----
   const checkHelper = useCallback(async () => {
     const status = await getHelperStatus();
@@ -1082,6 +1111,21 @@ const LiveStudio = () => {
                     className={`w-12 h-12 rounded-full flex items-center justify-center transition ${sharing ? 'bg-church-blue text-white hover:brightness-110' : 'bg-white/10 hover:bg-white/20'}`}
                     aria-label={sharing ? 'Stop sharing screen' : 'Share screen'} title={sharing ? 'Stop sharing' : 'Share screen'}>
                     <Icon d={ICONS.screen} className="w-6 h-6" />
+                  </button>
+                )}
+                {canShareScreen && (
+                  <button
+                    onClick={sharing ? stopSharing : captureProclaim}
+                    className={`h-12 px-4 rounded-full flex items-center gap-2 font-semibold text-sm transition border-2 ${
+                      sharing
+                        ? 'bg-church-blue text-white border-church-blue hover:brightness-110'
+                        : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                    }`}
+                    aria-label={sharing ? 'Stop showing Proclaim' : 'Show Proclaim (lyrics and announcements)'}
+                    title={sharing ? 'Stop showing Proclaim' : 'Show Proclaim — pick the Faithlife Proclaim window'}
+                  >
+                    <Icon d={ICONS.screen} className="w-5 h-5" />
+                    {sharing ? 'Proclaim on' : 'Show Proclaim'}
                   </button>
                 )}
                 <button onClick={() => setShowSettings(true)} className="w-12 h-12 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 transition" aria-label="Camera and microphone settings" title="Settings">
