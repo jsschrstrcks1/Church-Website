@@ -208,50 +208,58 @@ CREATE TABLE IF NOT EXISTS files (
 );
 
 -- ============================================================
--- Prayer requests (PWA). Anyone can submit; the submitter picks
--- visibility; an admin approves before it appears; staff see all.
+-- Native Live Studio (auto-create broadcast on YouTube/Facebook).
+-- Replaces Firebase's privateYoutube/privateFacebook docs. Tokens are write-once
+-- server secrets; only the Worker reads them, and never for non-streaming callers.
 -- ============================================================
-CREATE TABLE IF NOT EXISTS prayer_requests (
-  id           TEXT PRIMARY KEY,              -- uuid
-  text         TEXT NOT NULL,                 -- the request
-  visibility   TEXT NOT NULL DEFAULT 'members' CHECK (visibility IN ('everyone','members')),
-  status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','denied')),
-  answered     INTEGER NOT NULL DEFAULT 0 CHECK (answered IN (0,1)),
-  submitted_by TEXT,                          -- optional contact/name (not a member id)
-  source       TEXT NOT NULL DEFAULT 'app' CHECK (source IN ('app','sms','email')),
-  via_sms      INTEGER NOT NULL DEFAULT 0 CHECK (via_sms IN (0,1)), -- logged-in member asked to text it to the prayer line
-  sms_to       TEXT,                          -- configured prayer phone number (masked in reads)
-  created_at   TEXT NOT NULL,
-  reviewed_by  TEXT REFERENCES members(id),
-  reviewed_at  TEXT,
-  approved_at  TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_prayer_status ON prayer_requests(status);
-CREATE INDEX IF NOT EXISTS idx_prayer_vis ON prayer_requests(visibility);
 
--- ============================================================
--- Sermon archive + transcripts (Workers AI Whisper at upload time).
--- transcript holds the text; transcript_vtt holds line timing for the
--- members' read-along. description/metadata are auto-filled from the transcript.
--- ============================================================
-CREATE TABLE IF NOT EXISTS sermons (
-  id           TEXT PRIMARY KEY,              -- uuid
-  title        TEXT NOT NULL DEFAULT '',
-  date         TEXT NOT NULL,                 -- YYYY-MM-DD
-  mode         TEXT NOT NULL DEFAULT 'wednesday' CHECK (mode IN ('sunday','wednesday')),
-  description  TEXT NOT NULL DEFAULT '',
-  transcript   TEXT NOT NULL DEFAULT '',
-  transcript_vtt TEXT NOT NULL DEFAULT '',
-  media_key    TEXT,                          -- R2 object key for the clip mp4
-  visibility   TEXT NOT NULL DEFAULT 'members' CHECK (visibility IN ('public','members')),
-  published    INTEGER NOT NULL DEFAULT 0 CHECK (published IN (0,1)),
-  created_at   TEXT NOT NULL,
-  uploaded_by  TEXT REFERENCES members(id),
-  transcript_updated_at TEXT,
-  published_at TEXT
+-- YouTube connection (one row): the connected channel + a reusable ingest stream.
+CREATE TABLE IF NOT EXISTS yt_connection (
+  id           INTEGER PRIMARY KEY CHECK (id = 1),
+  refresh_token TEXT NOT NULL,
+  access_token TEXT NOT NULL DEFAULT '',
+  token_expires TEXT,
+  channel_id   TEXT,
+  channel_title TEXT,
+  stream_id    TEXT,                          -- reusable ingest stream id
+  ingest_url   TEXT,                          -- the streaming computer pushes video here
+  connected_by TEXT,
+  connected_at TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_sermons_date ON sermons(date);
-CREATE INDEX IF NOT EXISTS idx_sermons_vis ON sermons(visibility);
+
+-- Pending YouTube sign-ins (state -> member), expire after 15 min
+CREATE TABLE IF NOT EXISTS yt_oauth_state (
+  code       TEXT PRIMARY KEY,
+  uid        TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+-- Facebook connection (one row): the church Page + its token
+CREATE TABLE IF NOT EXISTS fb_connection (
+  id           INTEGER PRIMARY KEY CHECK (id = 1),
+  page_id      TEXT NOT NULL,
+  page_name    TEXT,
+  page_token   TEXT NOT NULL,
+  connected_by TEXT,
+  connected_at TEXT
+);
+
+-- Pending Facebook sign-ins (state -> member)
+CREATE TABLE IF NOT EXISTS fb_oauth_state (
+  code       TEXT PRIMARY KEY,
+  uid        TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+-- When the signing-in account manages several Pages, this holds them for an
+-- admin to pick (expires after 30 min). pages_json keeps the full token per page.
+CREATE TABLE IF NOT EXISTS fb_pages_pending (
+  id          INTEGER PRIMARY KEY CHECK (id = 1),
+  pages_json  TEXT NOT NULL DEFAULT '[]',
+  uid         TEXT,
+  member_name TEXT DEFAULT '',
+  expires_at  TEXT
+);
 
 -- ============================================================
 -- Phase 4: reel/shorts queue — clips to auto-post to YouTube through
@@ -270,4 +278,3 @@ CREATE TABLE IF NOT EXISTS reel_queue (
   created_at   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_reel_pending ON reel_queue(status, publish_at);
-

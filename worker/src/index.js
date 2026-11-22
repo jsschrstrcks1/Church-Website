@@ -31,6 +31,8 @@ const TOKEN_HEADER_RE = /^Bearer\s+([A-Za-z0-9\-_=]+)$/i;
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 const STALE_LIVE_MS = 180 * 60 * 1000; // 3h — a flag flip holds for a whole service; site polls /live/status every 45s
 
+import * as liveNative from './livenative.js';
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -296,7 +298,18 @@ export default {
         return cors(json({ ok: true }));
       }
 
-      if (!authed) return cors(json({ error: 'unauthorized' }, 401));
+      // OAuth callbacks: Google and Facebook redirect here WITHOUT our bearer token,
+      // so they are public. They send the user back into the Studio with the result.
+      if (path === '/youtube-callback') {
+        const to = await liveNative.ytHandleCallback(env, db, url);
+        return new Response('<html><body><script>location.href=' + JSON.stringify(to) + '</script></body></html>', { headers: { 'Content-Type': 'text/html' } });
+      }
+      if (path === '/facebook-callback') {
+        const to = await liveNative.fbHandleCallback(env, db, url);
+        return new Response('<html><body><script>location.href=' + JSON.stringify(to) + '</script></body></html>', { headers: { 'Content-Type': 'text/html' } });
+      }
+
+if (!authed) return cors(json({ error: 'unauthorized' }, 401));
 
       // Logout
       if (path === '/auth/logout' && request.method === 'POST') {
@@ -535,7 +548,50 @@ export default {
         return cors(json(list.results));
       }
 
-      // ================= Content: newsletters =================
+      // ===== Native live broadcast (auto-create on YouTube/Facebook) =====
+      // GET  /live/info            -> {configured,connected,facebookConnected,...}
+      // GET  /live/youtube/connect -> {url}  (start OAuth)
+      // GET  /live/facebook/connect-> {url}
+      // POST /live/youtube/disconnect | /live/facebook/disconnect
+      // POST /live/facebook/choose-page {pageId}
+      // POST /live/go   {title?,description?,privacy?} -> starts broadcasts, returns ingest urls
+      // POST /live/stop -> ends broadcasts + flips flag off
+      if (path === '/live/info' && request.method === 'GET') {
+        try { return cors(json(await liveNative.liveInfo(env, db))); }
+        catch (e) { return cors(json({ error: e.message || 'live-info-failed' }, 500)); }
+      }
+      if (path === '/live/youtube/connect' && request.method === 'GET') {
+        try { return cors(json({ url: await liveNative.ytConnectUrl(env, db, member.id) })); }
+        catch (e) { return cors(json({ error: e.message || 'youtube-connect-failed' }, 500)); }
+      }
+      if (path === '/live/facebook/connect' && request.method === 'GET') {
+        try { return cors(json({ url: await liveNative.fbConnectUrl(env, db, member.id) })); }
+        catch (e) { return cors(json({ error: e.message || 'facebook-connect-failed' }, 500)); }
+      }
+      if (path === '/live/youtube/disconnect' && request.method === 'POST') {
+        return cors(json(await liveNative.ytDisconnect(env, db)));
+      }
+      if (path === '/live/facebook/disconnect' && request.method === 'POST') {
+        return cors(json(await liveNative.fbDisconnect(env, db)));
+      }
+      if (path === '/live/facebook/choose-page' && request.method === 'POST') {
+        try { return cors(json(await liveNative.fbChoosePage(env, db, body.pageId))); }
+        catch (e) { return cors(json({ error: e.message || 'facebook-choose-failed' }, 400)); }
+      }
+      if (path === '/live/go' && request.method === 'POST') {
+        try {
+          const result = await liveNative.startBroadcasts(env, db, member, body);
+          return cors(json(result));
+        } catch (e) {
+          return cors(json({ error: e.message || 'go-live-failed' }, 500));
+        }
+      }
+      if (path === '/live/stop' && request.method === 'POST') {
+        try { return cors(json(await liveNative.stopBroadcasts(env, db, member))); }
+        catch (e) { return cors(json({ error: e.message || 'stop-live-failed' }, 500)); }
+      }
+
+// ================= Content: newsletters =================
       if (path === '/newsletters' && request.method === 'GET') {
         // Only non-archived (list) — the UI separates retired ones; pass ?all=1 for those.
         const clause = url.searchParams.get('all') === '1' ? '' : "WHERE status = 'active'";
