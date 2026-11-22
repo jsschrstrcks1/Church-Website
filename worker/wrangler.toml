@@ -4,6 +4,9 @@ compatibility_date = "2024-11-01"
 compatibility_flags = ["nodejs_compat"]
 account_id = "8a5ea2f622c25f11fcabfc01854890d2"
 
+# Auto-post reels/shorts through the week (Phase 4) — must be top-level, before any [[tables]]
+triggers = { crons = ["*/15 * * * *"] }
+
 # Local D1 binding (works without a Cloudflare account via wrangler dev --local)
 [[d1_databases]]
 binding = "DB"
@@ -18,3 +21,6 @@ binding = "AI"
 [[r2_buckets]]
 binding = "SERMONS"
 bucket_name = "lakeview-sermons"
+
+# Auto-post reels/shorts through the week (Phase 4)
+triggers = { crons = ["*/15 * * * *"] }

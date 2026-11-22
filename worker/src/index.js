@@ -390,6 +390,44 @@ export default {
         return cors(json({ ok: true, words: words.length, vttChars: vtt.length }));
       }
 
+      // ===== Reels/shorts queue (Phase 4): staff queue clips to auto-post through the week =====
+      const reelListGet = path === '/reels' && request.method === 'GET';
+      const reelCreate = path === '/reels' && request.method === 'POST';
+      const reelMatch = path.match(/^\/reels\/([\w-]+)$/);
+      const reelMedia = path.match(/^\/reels\/([\w-]+)\/media$/);
+      const reelRetry = path.match(/^\/reels\/([\w-]+)\/retry$/);
+      if (reelListGet || reelCreate) {
+        if (!(member.role === 'owner' || member.role === 'admin')) return cors(json({ error: 'forbidden' }, 403));
+        if (reelListGet) {
+          const rows = await db.prepare('SELECT * FROM reel_queue ORDER BY created_at DESC LIMIT 200').all();
+          return cors(json(rows.results));
+        }
+        const id = crypto.randomUUID();
+        await db.prepare('INSERT INTO reel_queue (id,title,description,publish_at,status,created_at) VALUES (?,?,?,?,?,?)')
+          .bind(id, (body.title || '').slice(0, 120), (body.description || '').slice(0, 500),
+            typeof body.publish_at === 'string' ? body.publish_at : null, 'pending', new Date().toISOString()).run();
+        return cors(json({ id }));
+      }
+      if (reelMedia && request.method === 'PUT') {
+        if (!(member.role === 'owner' || member.role === 'admin')) return cors(json({ error: 'forbidden' }, 403));
+        if (!env.SERMONS) return cors(json({ error: 'media-not-configured' }, 501));
+        const buf = await request.arrayBuffer();
+        if (!buf || buf.byteLength < 1000) return cors(json({ error: 'empty-body' }, 400));
+        await env.SERMONS.put(`reels/${reelMedia[1]}.mp4`, buf, { httpMetadata: { contentType: 'video/mp4' } });
+        return cors(json({ ok: true, bytes: buf.byteLength }));
+      }
+      if (reelRetry && request.method === 'POST') {
+        if (!(member.role === 'owner' || member.role === 'admin')) return cors(json({ error: 'forbidden' }, 403));
+        await db.prepare("UPDATE reel_queue SET status='pending', posted_at=NULL, error=NULL, youtube_id=NULL WHERE id=?").bind(reelRetry[1]).run();
+        return cors(json({ ok: true }));
+      }
+      if (reelMatch && request.method === 'DELETE') {
+        if (!(member.role === 'owner' || member.role === 'admin')) return cors(json({ error: 'forbidden' }, 403));
+        await db.prepare('DELETE FROM reel_queue WHERE id=?').bind(reelMatch[1]).run();
+        if (env.SERMONS) { try { await env.SERMONS.delete(`reels/${reelMatch[1]}.mp4`); } catch {} }
+        return cors(json({ ok: true }));
+      }
+
       // Members management (owner only)
       const isOwner = member.role === 'owner';
       if (path === '/members' && request.method === 'GET') {
@@ -669,6 +707,47 @@ export default {
     }
   },
 
+  // Scheduled (Phase 4): auto-post due reels to YouTube as Shorts. Every 15 min, pull
+  // pending/due queue rows, upload each clip's mp4 to the Data API (resumable), mark posted.
+  // Idempotent (posted_at set last) + catch-up-on-boot (catches anything due any earlier run
+  // missed). Requires YOUTUBE_ACCESS_TOKEN (+ YOUTUBE_REFRESH_TOKEN / CLIENT_ID / CLIENT_SECRET
+  // for refresh). Guards: no R2 / no token → row marked error, never crashes the whole batch.
+  async scheduled(event, env, ctx) {
+    const db = env.DB;
+    try {
+      const grace = new Date(Date.now() - 60 * 1000).toISOString();
+      const due = await db.prepare(
+        "SELECT id,title,description,error FROM reel_queue WHERE status='pending' AND posted_at IS NULL AND (publish_at IS NULL OR publish_at <= ?) ORDER BY created_at ASC LIMIT 5"
+      ).bind(grace).all();
+      let accessToken = env.YOUTUBE_ACCESS_TOKEN || null;
+      for (const reel of due.results || []) {
+        try {
+          if (!reel.title) await markReel(db, reel.id, 'error', 'empty-title');
+          if (!env.SERMONS) { await markReel(db, reel.id, 'error', 'no-r2'); continue; }
+          const obj = await env.SERMONS.get(`reels/${reel.id}.mp4`);
+          if (!obj) { await markReel(db, reel.id, 'error', 'missing-media'); continue; }
+          if (!accessToken) { await markReel(db, reel.id, 'error', 'no-token'); continue; }
+          const media = await obj.arrayBuffer();
+          if (media.byteLength < 1000) { await markReel(db, reel.id, 'error', 'empty-media'); continue; }
+          let uploader = { run: (t) => uploadYoutubeShort(env, t, reel, media) };
+          let yid;
+          try { yid = await uploader.run(accessToken); }
+          catch (e1) {
+            // Try once with a refreshed token, then give up (idempotent retry next window).
+            if (env.YOUTUBE_REFRESH_TOKEN && env.YOUTUBE_CLIENT_ID && env.YOUTUBE_CLIENT_SECRET) {
+              const fresh = await refreshYouTubeToken(env);
+              if (fresh) { accessToken = fresh; try { yid = await uploader.run(fresh); } catch (e2) { await markReel(db, reel.id, 'error', String(e2.message || e2).slice(0, 160)); continue; } }
+              else { await markReel(db, reel.id, 'error', 'refresh-failed'); continue; }
+            } else { await markReel(db, reel.id, 'error', String(e1.message || e1).slice(0, 160)); continue; }
+          }
+          await db.prepare("UPDATE reel_queue SET status='posted', posted_at=?, youtube_id=? WHERE id=?").bind(new Date().toISOString(), yid || null, reel.id).run();
+        } catch (e) {
+          await markReel(db, reel.id, 'error', String(e.message || e).slice(0, 160));
+        }
+      }
+    } catch (e) { /* keep cron alive */ }
+  },
+
   // Cloudflare Email Routing -> this Worker (prayers@lakeviewfellowshipchurch.com).
   // An inbound email is turned into a PENDING prayer request (default members-only) so it
   // lands in the same staff-approval queue as app submissions. Best effort: a malformed
@@ -792,6 +871,58 @@ function wordsToVtt(words, text) {
   }
   if (line.length) out += `${ts(lineStart)} --> ${ts(lineEnd)}\n${line.join(' ')}\n\n`;
   return out;
+}
+
+async function markReel(db, id, status, error) {
+  try {
+    await db.prepare("UPDATE reel_queue SET status=?, error=? WHERE id=?").bind(status, String(error || '').slice(0, 200), id).run();
+  } catch { /* best effort */ }
+}
+
+// Upload a short clip to YouTube via the Data API resumable flow. Returns the video id.
+async function uploadYoutubeShort(env, accessToken, reel, media) {
+  const key = env.YOUTUBE_API_KEY ? `&key=${env.YOUTUBE_API_KEY}` : '';
+  const initRes = await fetch(`https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status${key}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json; charset=UTF-8',
+      'X-Upload-Content-Type': 'video/mp4'
+    },
+    body: JSON.stringify({
+      snippet: { title: reel.title || 'Lakeview Fellowship — clip', description: reel.description || '', categoryId: '28' },
+      status: { privacyStatus: 'public', selfDeclaredMadeForKids: false }
+    })
+  });
+  if (initRes.status !== 200) throw new Error(`yt-init:${initRes.status}`);
+  const loc = initRes.headers.get('location');
+  if (!loc) throw new Error('yt-no-location');
+  const up = await fetch(loc, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'video/mp4', 'Content-Length': String(media.byteLength) },
+    body: media
+  });
+  if (![200, 201, 204].includes(up.status)) throw new Error(`yt-upload:${up.status}`);
+  const res = await up.json().catch(() => ({}));
+  return res.id || '';
+}
+
+// Refresh an expired YouTube access token (OAuth). Returns the new token or null.
+async function refreshYouTubeToken(env) {
+  try {
+    const r = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        refresh_token: env.YOUTUBE_REFRESH_TOKEN,
+        client_id: env.YOUTUBE_CLIENT_ID,
+        client_secret: env.YOUTUBE_CLIENT_SECRET,
+        grant_type: 'refresh_token'
+      }).toString()
+    });
+    const j = await r.json().catch(() => ({}));
+    return j.access_token || null;
+  } catch { return null; }
 }
 
 async function sessionFromToken(db, token) {

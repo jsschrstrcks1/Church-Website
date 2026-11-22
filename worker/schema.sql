@@ -252,3 +252,22 @@ CREATE TABLE IF NOT EXISTS sermons (
 );
 CREATE INDEX IF NOT EXISTS idx_sermons_date ON sermons(date);
 CREATE INDEX IF NOT EXISTS idx_sermons_vis ON sermons(visibility);
+
+-- ============================================================
+-- Phase 4: reel/shorts queue — clips to auto-post to YouTube through
+-- the week. The Worker's scheduled cron uploads due ones as Shorts.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS reel_queue (
+  id           TEXT PRIMARY KEY,              -- uuid
+  title        TEXT NOT NULL DEFAULT '',
+  description  TEXT NOT NULL DEFAULT '',
+  publish_at   TEXT,                          -- ISO; null = post ASAP
+  status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','posted','error')),
+  r2_key       TEXT,                          -- R2 object key
+  youtube_id   TEXT,                          -- video id once posted
+  error        TEXT,
+  posted_at    TEXT,
+  created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reel_pending ON reel_queue(status, publish_at);
+

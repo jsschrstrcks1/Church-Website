@@ -101,6 +101,21 @@ export const apiSermonUpload = async (id, fileOrBlob) => {
   return res.json();
 };
 
+// ---- reels / shorts queue (Phase 4) ----
+export const apiReels = async () => (await request('GET', '/reels')).data || [];
+export const apiReelCreate = async (r) => (await request('POST', '/reels', r)).data;
+export const apiReelUpload = async (id, fileOrBlob) => {
+  const res = await fetch(`${API_BASE}/reels/${id}/media`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'video/mp4', Authorization: `Bearer ${getToken()}` },
+    body: fileOrBlob
+  });
+  if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+  return res.json();
+};
+export const apiReelRetry = async (id) => (await request('POST', `/reels/${id}/retry`)).data;
+export const apiReelDelete = async (id) => (await request('DELETE', `/reels/${id}`)).data;
+
 // ---- newsletters ----
 export const apiNewsletters = async (all = false) => (await request('GET', `/newsletters${all ? '?all=1' : ''}`)).data || [];
 export const apiNewsletterGet = async (id) => (await request('GET', `/newsletters/${id}`)).data;
